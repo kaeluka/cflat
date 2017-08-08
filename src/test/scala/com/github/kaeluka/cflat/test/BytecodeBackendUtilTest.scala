@@ -7,10 +7,10 @@ import org.hamcrest.Matchers._
 import org.junit.{Assert, Test}
 
 class BytecodeBackendUtilTest {
-  def foo_or_bar = Alt(Value("foo"), Value("bar"))
-  def foo_or_bar_or_baz = Alt(Value("foo"), Value("bar"), Value("baz"))
+  def foo_or_bar = Alt(("foo", None), ("bar", None))
+  def foo_or_bar_or_baz = Alt(("foo", None), ("bar", None), ("baz", None))
 
-  def ten_times_eps = Rep("col", 10, Value("col"), "ok", Value("ok"))
+  def ten_times_eps = Rep("col", 10, None, "ok", None)
 
   def assertSize(term : TypeSpec, n : Option[Int]) = {
     Assert.assertEquals(s"type spec $term must have size $n", n, term.getSize)

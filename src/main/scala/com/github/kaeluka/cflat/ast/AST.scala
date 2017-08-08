@@ -58,19 +58,22 @@ sealed trait TypeSpec {
 //  }
 }
 
-case class Eps() extends TypeSpec {
-  override def getSize = Some(0)
-  override def orderedChildren = List()
-}
+//case class Eps() extends TypeSpec {
+//  override def getSize = Some(0)
+//  override def orderedChildren = List()
+//}
 
-case class Value(name : String) extends TypeSpec {
-  override def getSize = Some(1)
-  override def orderedChildren = List()
-}
+//case class Value(name : String) extends TypeSpec {
+//  override def getSize = Some(1)
+//  override def orderedChildren = List()
+//}
 
-case class Rep(loopName : String, n : Int, loop : TypeSpec, afterName : String, after : TypeSpec) extends TypeSpec {
-  override def getSize = for (i <- loop.getSize) yield n * i
-  override def orderedChildren = List(loop, after)
+case class Rep(loopName : String, n : Int, loop : Option[TypeSpec], afterName : String, after : Option[TypeSpec]) extends TypeSpec {
+  override def getSize = {
+    Some(n * loop.flatMap(_.getSize).getOrElse(1) * after.flatMap(_.getSize).getOrElse(1))
+  }
+
+  override def orderedChildren = loop.toList ++ after.toList
 }
 
 case class Star(recName : String, inner : TypeSpec, after : TypeSpec) extends TypeSpec {
@@ -78,15 +81,15 @@ case class Star(recName : String, inner : TypeSpec, after : TypeSpec) extends Ty
   override def orderedChildren = List(inner, after)
 }
 
-case class Alt(a : TypeSpec, b : TypeSpec, rest : TypeSpec*) extends TypeSpec {
+case class Alt(a : (String, Option[TypeSpec]), b : (String, Option[TypeSpec]), rest : (String, Option[TypeSpec])*) extends TypeSpec {
   override def getSize = {
-    (a :: b :: rest.toList).foldRight(Option(0).asInstanceOf[Option[Int]])(
+    (a :: b :: rest.toList).foldRight(Option(0))(
       {
-        case (t, oacc) => for (acc <- oacc; s <- t.getSize) yield acc + s
+        case (t, oacc) => for (acc <- oacc) yield acc + t._2.map(_.getSize).getOrElse(1).asInstanceOf[Int]
       }
     )
   }
-  override def orderedChildren = a :: b :: rest.toList
+  override def orderedChildren = a._2.toList ++ b._2.toList ++ rest.flatMap(_._2.toList)
 }
 
 

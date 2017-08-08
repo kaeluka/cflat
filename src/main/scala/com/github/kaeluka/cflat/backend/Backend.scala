@@ -7,7 +7,7 @@ case class StringError(msg : String) extends CompilerError
 
 trait Backend[ctx, t] {
   def emptyCtx(t : TypeSpec, name : String) : ctx
-  def compile(implicit c : ctx, nameHint: String, t : TypeSpec) : Either[CompilerError, t]
+  def compile(c : ctx, nameHint: String, t : TypeSpec) : Either[CompilerError, t]
   def postCompile(c : ctx, res : t) : Either[CompilerError, t] = { Right(res) }
 
   def compileProgram(nameHint : String, t : TypeSpec, c : ctx = null.asInstanceOf[ctx]) : Either[CompilerError, t] = {

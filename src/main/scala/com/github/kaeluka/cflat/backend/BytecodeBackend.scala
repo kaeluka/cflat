@@ -16,53 +16,39 @@ import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy
 import net.bytebuddy.implementation.Implementation.{Context, Target}
 import net.bytebuddy.implementation._
 import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, StackManipulation}
-import net.bytebuddy.jar.asm.{MethodVisitor, Opcodes}
+import net.bytebuddy.jar.asm.{Label, MethodVisitor, Opcodes}
 
 import scala.collection.mutable.ArrayBuffer
 
-class IdxCtr {
-  var lastIdx = -1
-  def genIdx() : Int = {
-    this.lastIdx = this.lastIdx + 1
-    this.lastIdx
-  }
-}
-
-case class BytecodeBackendCtx(wholeSpec : TypeSpec, klToExtend : (String, Builder[Object]), indexStack : List[(String, Option[Int], String)] = List(), doKlassDump : Boolean) {
+case class BytecodeBackendCtx(wholeSpec : TypeSpec, resToExtend : BytecodeResult, indexStack : List[(String, Option[Int], String)] = List(), doKlassDump : Boolean, offset : Int) {
 
   val bb: ByteBuddy = new ByteBuddy()
   val treeBranchSizes : ArrayBuffer[Int] = ArrayBuffer()
   var nameIdx : Map[String,Int] = Map()
-  var idxCtr = new IdxCtr()
-
-  def genName(hint : String) : String = {
-    val idx = this.nameIdx.getOrElse(hint, 0)
-    this.nameIdx = this.nameIdx + ((hint, idx + 1))
-    if (idx > 0) {
-      hint + idx
-    } else {
-      hint
-    }
-  }
-
-  def genIndex() : Int = {
-    this.idxCtr.genIdx()
-  }
 
   def withStar[t](recName : String, kl : String) : BytecodeBackendCtx = {
-    BytecodeBackendCtx(wholeSpec, klToExtend, (recName, None, kl) :: indexStack, doKlassDump)
+    BytecodeBackendCtx(wholeSpec, resToExtend, (recName, None, kl) :: indexStack, doKlassDump, offset)
   }
 
-  def pushIndex[t](recName : String, n : Int, kl : String) : BytecodeBackendCtx = {
-    BytecodeBackendCtx(wholeSpec, klToExtend, (recName, Some(n), kl) :: indexStack, doKlassDump)
+  def pushIndex[t](recName : String, n : Option[Int], kl : String) : BytecodeBackendCtx = {
+    BytecodeBackendCtx(wholeSpec, resToExtend, (recName, n, kl) :: indexStack, doKlassDump, offset = 0)
   }
 
-  def withKlassToExtend(kl : (String, Builder[Object])) : BytecodeBackendCtx = {
-    BytecodeBackendCtx(wholeSpec, kl, indexStack, doKlassDump)
+  def withResToExtend(res : BytecodeResult) : BytecodeBackendCtx = {
+    BytecodeBackendCtx(wholeSpec, res, indexStack, doKlassDump, offset)
+  }
+
+  def mapResToExtend(f : BytecodeResult => BytecodeResult) : BytecodeBackendCtx = {
+    this.withResToExtend(f(this.resToExtend))
   }
 
   def withKlassDump() : BytecodeBackendCtx = {
-    BytecodeBackendCtx(wholeSpec, klToExtend, indexStack, doKlassDump = true)
+    BytecodeBackendCtx(wholeSpec, resToExtend, indexStack, doKlassDump = true, offset)
+  }
+
+  def withIncreasedOffset(deltaOffset : Int) : BytecodeBackendCtx = {
+    println(s"offset is now: ${offset+1}")
+    BytecodeBackendCtx(wholeSpec, resToExtend, indexStack, doKlassDump, offset + deltaOffset)
   }
 }
 
@@ -94,7 +80,6 @@ object BytecodeBackendUtil {
       }
     }
     cur.asInstanceOf[Int]
-//    cur.getClass.getMethod("get").invoke(cur).asInstanceOf[Int]
   }
 
   def loadDynamicClass(kl : (String, DynamicType.Builder[Object])) : Class[_] = {
@@ -139,6 +124,18 @@ object BytecodeBackendUtil {
   test()
 }
 
+object BytecodeResult {
+  def emptyKl(name : String) : (String, Builder[Object]) = {
+    (name, new ByteBuddy()
+      .subclass(classOf[Object], ConstructorStrategy.Default.NO_CONSTRUCTORS)
+      .name(name)
+      .modifiers(ModifierContributor.Resolver.of(Visibility.PUBLIC, TypeManifestation.FINAL).resolve()))
+  }
+
+  def empty(name : String) : BytecodeResult = {
+    BytecodeResult(emptyKl(name), List(), List())
+  }
+}
 case class BytecodeResult(mainKlass : (String, DynamicType.Builder[Object]), privateKlasses: List[(String, DynamicType.Builder[Object])], endKlasses: List[(String, DynamicType.Builder[Object])]) {
 
   def writeToFile(dir: Path): Unit = {
@@ -179,6 +176,66 @@ case class BytecodeResult(mainKlass : (String, DynamicType.Builder[Object]), pri
     }
     this.mainKlass._2.make.load(this.getClass.getClassLoader).getLoaded
   }
+  def withStepConstructor(indexStack : List[(String, Option[Int], String)]) : BytecodeResult = {
+    println(s"adding ctor for ${mainKlass._1}, ${indexStack.size} args")
+    val ctorImpl = ToImpl(new StackManipulation {
+      override def apply(mv: MethodVisitor, implCtx: Context) = {
+        mv.visitVarInsn(Opcodes.ALOAD, 0)
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+        var crash : Option[Label] = None
+        for (idx <- indexStack.zipWithIndex) {
+          if (idx._1._2.isDefined) {
+            if (crash.isEmpty) {
+              crash = Option(new Label())
+            }
+            // bounds check:
+            mv.visitVarInsn(Opcodes.ILOAD, idx._2+1)
+            mv.visitLdcInsn(idx._1._2.get)
+            mv.visitJumpInsn(Opcodes.IF_ICMPGT, crash.get)
+          }
+
+          mv.visitVarInsn(Opcodes.ALOAD, 0)
+          mv.visitVarInsn(Opcodes.ILOAD, idx._2+1)
+          mv.visitFieldInsn(Opcodes.PUTFIELD, mainKlass._1, "idx_"+idx._1._1, "I")
+        }
+        mv.visitInsn(Opcodes.RETURN)
+        crash match {
+          case Some(lbl) => {
+            mv.visitLabel(lbl)
+            val locals = new Array[Object](1+indexStack.size)
+            locals(0) = implCtx.getInstrumentedType.getCanonicalName
+            for (i <- 1 to indexStack.size) {
+              locals(i) = Opcodes.INTEGER
+            }
+            mv.visitFrame(Opcodes.F_FULL, 2, locals, 0, new Array[Object](0))
+            mv.visitTypeInsn(Opcodes.NEW, "java/lang/NullPointerException")
+            mv.visitInsn(Opcodes.DUP)
+            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/NullPointerException", "<init>", "()V", false)
+            mv.visitInsn(Opcodes.ATHROW)
+          }
+          case None => ()
+        }
+        new StackManipulation.Size(0, if (indexStack.nonEmpty) { 2 } else { 1 })
+      }
+      override def isValid = true
+    })
+    val parameters = new java.util.ArrayList[TypeDefinition]()
+    for (idx <- indexStack) {
+      parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
+    }
+    setMainKlass((mainKlass._1, mainKlass._2.defineConstructor(Opcodes.ACC_PUBLIC)
+      .withParameters(parameters)
+      .intercept(ctorImpl)))
+  }
+  def withIndexField(index : String) : BytecodeResult = {
+    println(s"adding coordinate field $index")
+    this.setMainKlass((this.mainKlass._1, this.mainKlass._2.defineField(s"idx_${index}", classOf[Int], Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL)))
+  }
+
+  def withIndexFields(indexStack : List[(String, Option[Int], String)]) : BytecodeResult = {
+    println(s"adding coordinate fields ${indexStack.mkString("[", ", ", "]")}")
+    indexStack.foldRight(this)({case (f, acc) => acc.withIndexField(f._1)})
+  }
 
   def withMainKlass(kl : (String, DynamicType.Builder[Object])) : BytecodeResult = {
     BytecodeResult(kl, privateKlasses, endKlasses).withPrivKlass(mainKlass)
@@ -196,7 +253,16 @@ case class BytecodeResult(mainKlass : (String, DynamicType.Builder[Object]), pri
     })
   }
 
-  def withRecStep(name: String, ctx: BytecodeBackendCtx) : BytecodeResult = {
+  /**
+    * Add a recursive step to a result.
+    *
+    * This means that all end classes will be given a recursion method that
+    * leads back to the result's main class.
+    * @param name the name of the recursion method
+    * @param ctx the context
+    * @return the modified result
+    */
+  def withRecStep(ctx: BytecodeBackendCtx, name: String) : BytecodeResult = {
     def addStep(kl : (String, Builder[Object])) : Builder[Object] = {
       println(s"adding recursive step: ${kl._1} --$name--> ${mainKlass._1}")
       kl._2.defineMethod(name, BytecodeBackendUtil.getTypeDesc(mainKlass._1), Opcodes.ACC_PUBLIC).intercept(ToImpl(CreateStepObj(kl._1, ctx, Some(name))))
@@ -207,6 +273,13 @@ case class BytecodeResult(mainKlass : (String, DynamicType.Builder[Object]), pri
         val newEndKlasses = this.endKlasses.map({ kl => (kl._1, addStep(kl)) })
         BytecodeResult(mainKlass, privateKlasses, newEndKlasses)
       }
+    }
+  }
+
+  def withStepOrGetter(ctx : BytecodeBackendCtx, stepName : String, oTarget : Option[BytecodeResult]) : BytecodeResult = {
+    oTarget match {
+      case None => withGetter(ctx, stepName)
+      case Some(target) => this.withStep(ctx, stepName, target)
     }
   }
 
@@ -224,81 +297,108 @@ case class BytecodeResult(mainKlass : (String, DynamicType.Builder[Object]), pri
     }
   }
 
+  def withGetter(ctx: BytecodeBackendCtx, stepName: String): BytecodeResult = {
+    println(s"adding getter $stepName to klass ${this.mainKlass._1}")
+    val parameters = new util.ArrayList[TypeDefinition](ctx.indexStack.size)
+    for (_ <- ctx.indexStack) {
+      parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
+    }
+    val withGetter = this.mainKlass._2
+      .defineMethod(stepName, classOf[Int], Opcodes.ACC_PUBLIC)
+      .intercept(ToImpl(new StackManipulation {
+        val offset = ctx.offset
+
+        override def apply(mv: MethodVisitor, implementationContext: Context) = {
+          mv.visitInsn(Opcodes.ICONST_0)
+          var scale = 1
+          for (idx <- ctx.indexStack) {
+            mv.visitLdcInsn(s"idx: ${idx._1}")
+            mv.visitInsn(Opcodes.POP)
+            mv.visitVarInsn(Opcodes.ALOAD, 0)
+            mv.visitFieldInsn(Opcodes.GETFIELD, mainKlass._1, s"idx_${idx._1}", "I")
+            assert(idx._2.isDefined, "infinite dimension case not yet implemented")
+            println(s"scaling ${idx._1} by ${scale}x")
+            mv.visitLdcInsn(scale)
+            scale = scale * idx._2.get
+            mv.visitInsn(Opcodes.IMUL)
+            mv.visitInsn(Opcodes.IADD)
+          }
+          println(s"using offset ${this.offset} for ${mainKlass._1}::$stepName")
+          mv.visitLdcInsn(this.offset)
+          mv.visitInsn(Opcodes.IADD)
+          mv.visitInsn(Opcodes.IRETURN)
+          new StackManipulation.Size(0, 3)
+        }
+
+        override def isValid = true
+      }))
+    this.setMainKlass((mainKlass._1, withGetter))
+  }
+
   override def toString: String = {
     s"BytecodeResult($mainKlass, ${privateKlasses.map(_._1).mkString("[", ", ", "]")}, ${endKlasses.map(_._1).mkString("[", ", ", "]")})"
   }
 }
 
-class BytecodeBackend extends Backend[BytecodeBackendCtx, BytecodeResult] {
+private class BytecodeBackend extends Backend[BytecodeBackendCtx, BytecodeResult] {
   override def emptyCtx(x : TypeSpec, name : String) = {
-    val kl: (String, Builder[Object]) = (name, this.addStepConstructor(this.emptyKl(name), List()))
-    BytecodeBackendCtx(x, kl, List(), doKlassDump = false)
+    val kl: (String, Builder[Object]) = (name, this.addStepConstructor(BytecodeResult.emptyKl(name), List()))
+    val foo = BytecodeResult.empty(name)
+
+    BytecodeBackendCtx(x, foo, List(), doKlassDump = false, offset = 0)
   }
 
-  override def compile(implicit c: BytecodeBackendCtx, name : String, t: TypeSpec) : Either[CompilerError, BytecodeResult] = {
-    val (klName : String, builder : Builder[Object]) = c.klToExtend
-    println(s"compiling $t into class $klName")
+  override def compile(c: BytecodeBackendCtx, name : String, t: TypeSpec) : Either[CompilerError, BytecodeResult] = {
+    val resToExtend: BytecodeResult = c.resToExtend
+    val klName = resToExtend.mainKlass._1
+    val builder = resToExtend.mainKlass._2
     t match {
-      case Eps() => {
-        println(s"done compiling $t")
-        Right(BytecodeResult((klName, builder), List(), List()))
-      }
-      case Value(tag) => {
-        println(s"==> public final class $klName | terminal class | indexStack = ${c.indexStack.mkString(", ")}")
-        val parameters = new util.ArrayList[TypeDefinition](c.indexStack.size)
-        for (_ <- c.indexStack) {
-          parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
-        }
-        val ret = builder
-          .defineMethod(tag, classOf[Int], Opcodes.ACC_PUBLIC)
-          .intercept(ToImpl(new StackManipulation {
-            override def apply(mv: MethodVisitor, implementationContext: Context) = {
-              mv.visitInsn(Opcodes.ICONST_0)
-              var scale = 1
-              for (idx <- c.indexStack) {
-                mv.visitLdcInsn(s"idx: ${idx._1}")
-                mv.visitInsn(Opcodes.POP)
-                mv.visitVarInsn(Opcodes.ALOAD, 0)
-                mv.visitFieldInsn(Opcodes.GETFIELD, klName, s"idx_${idx._1}", "I")
-                assert(idx._2.isDefined, "infinite dimension case not yet implemented")
-                println(s"scaling ${idx._1} by ${scale}x")
-                mv.visitLdcInsn(scale)
-                scale = scale * idx._2.get
-                mv.visitInsn(Opcodes.IMUL)
-                mv.visitInsn(Opcodes.IADD)
-              }
-              mv.visitLdcInsn(c.wholeSpec.bfsIndexOf(t))
-              mv.visitInsn(Opcodes.IADD)
-              mv.visitInsn(Opcodes.IRETURN)
-              new StackManipulation.Size(0, 3)
-            }
-
-            override def isValid = true
-          }))
-        println(s"done compiling $t")
-        Right(BytecodeResult((klName, ret), List(), List()))
-      }
-      case Rep(loopName, n, loop, exitName, after) => {
+      case Rep(loopName, n, oLoop, exitName, oAfter) => {
         /*
         { loop } -------+--exitName--> { after }
            ^            |
            |            |
            +--loopName--+
          */
-        println("pushing index..")
-        val cPrime = c.pushIndex(loopName, n, name)
-        val cPrimePrime = cPrime.withKlassToExtend((name, addStepConstructor((klName, addIndexField(builder, cPrime.indexStack.head)), cPrime.indexStack)))
-//        val cPrimePrime = cPrime
+        println(s"stage $name: 1")
+        val cPrime = c
+          .pushIndex(loopName, Option(n), name)
+          .mapResToExtend(_
+            .withIndexField(loopName)
+            .withStepConstructor((loopName, Some(n), name) :: c.indexStack))
 
-        val afterName = exitName.toUpperCase
-        println(s"creating after class $afterName..")
-        val afterBuilder = addStepConstructor((afterName, addIndexFields(emptyKl(afterName)._2, cPrimePrime.indexStack)), cPrimePrime.indexStack)
-
-        for (innerComp <- this.compile(cPrimePrime, name, loop).right;
-             withRec   <- Right(innerComp.withRecStep(loopName, cPrimePrime)).right;
-             afterComp <- this.compile(cPrimePrime.withKlassToExtend((afterName, afterBuilder)), afterName, after).right) yield {
-          withRec.withStep(cPrimePrime, exitName, afterComp)
+        val ethrCtxWithLoop = oLoop match {
+          /**
+            * - when the loop is empty, we should just add a step along the loop
+            *   dimension
+            * - when the loop is not empty, we add a recursive step (follow the
+            *   loop impl, then go back)
+            */
+          case Some(loop) => for (loopComp <- this.compile(cPrime, name, loop).right) yield {
+            cPrime.mapResToExtend(_.withRecStep(cPrime.withResToExtend(loopComp), loopName))
+          }
+          case None =>
+            Right(cPrime.mapResToExtend(_.withRecStep(cPrime, loopName)))
         }
+        val ethrCtxWithAfter = oAfter match {
+          case Some(after) => {
+            val emptyRes = BytecodeResult
+              .empty(exitName.toUpperCase)
+              .withIndexFields(cPrime.indexStack)
+              .withStepConstructor(cPrime.indexStack)
+            println(s"stage $name: 2")
+            for (cPrimePrime <- ethrCtxWithLoop.right;
+                 afterComp <- compile(
+                   cPrimePrime.withResToExtend(emptyRes),
+                   exitName,
+                   after).right) yield {
+              cPrimePrime.mapResToExtend(_.withStep(cPrimePrime, exitName, afterComp))
+            }
+          }
+          case None =>
+            ethrCtxWithLoop.right.map(_.mapResToExtend(_.withGetter(cPrime, exitName)))
+        }
+        ethrCtxWithAfter.right.map(_.resToExtend)
       }
 
       case Star(recName, inner, after) => {
@@ -312,36 +412,73 @@ class BytecodeBackend extends Backend[BytecodeBackendCtx, BytecodeResult] {
       }
 
       case Alt(lExp, rExp, rest @ _*) => {
-//                .map(kl => (kl, compile(c, kl.nameHint, kl).right.get))
+        println(s"t=$t")
         var res : BytecodeResult = BytecodeResult((klName, builder), List(), List())
-        for (e <- lExp :: rExp :: rest.toList) {
-          val currentRes = this.compile(c.withKlassToExtend(res.mainKlass), name, e)
-          currentRes match {
-            case Left(_) => return currentRes
-            case Right(bcrs) => {
-              res = res.setMainKlass(bcrs.mainKlass)
+        var curCtx = c
+        for (labelled <- lExp :: rExp :: rest.toList) {
+          labelled._2 match {
+            case Some(exp) => {
+              val currentRes = this.compile(curCtx.withResToExtend(res), name, exp)
+              currentRes match {
+                case Left(_) => return currentRes
+                case Right(bcrs) => {
+                  res = res.setMainKlass(bcrs.mainKlass)
+                  assert(exp.getSize.isDefined, "infinite size not yet supported")
+                  curCtx = curCtx.withIncreasedOffset(exp.getSize.get)
+                }
+              }
+            }
+            case None => {
+              println(s"adding getter ${labelled._1} to klass $klName")
+              val parameters = new util.ArrayList[TypeDefinition](curCtx.indexStack.size)
+              for (_ <- curCtx.indexStack) {
+                parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
+              }
+              val withGetter = res.mainKlass._2
+                .defineMethod(labelled._1, classOf[Int], Opcodes.ACC_PUBLIC)
+                .intercept(ToImpl(new StackManipulation {
+                  val offset = curCtx.offset
+                  override def apply(mv: MethodVisitor, implementationContext: Context) = {
+                    mv.visitInsn(Opcodes.ICONST_0)
+                    var scale = 1
+                    for (idx <- curCtx.indexStack) {
+                      mv.visitLdcInsn(s"idx: ${idx._1}")
+                      mv.visitInsn(Opcodes.POP)
+                      mv.visitVarInsn(Opcodes.ALOAD, 0)
+                      mv.visitFieldInsn(Opcodes.GETFIELD, klName, s"idx_${idx._1}", "I")
+                      assert(idx._2.isDefined, "infinite dimension case not yet implemented")
+                      println(s"scaling ${idx._1} by ${scale}x")
+                      mv.visitLdcInsn(scale)
+                      scale = scale * idx._2.get
+                      mv.visitInsn(Opcodes.IMUL)
+                      mv.visitInsn(Opcodes.IADD)
+                    }
+                    println(s"using offset ${this.offset} for $klName::${labelled._1}")
+                    mv.visitLdcInsn(this.offset)
+                    mv.visitInsn(Opcodes.IADD)
+                    mv.visitInsn(Opcodes.IRETURN)
+                    new StackManipulation.Size(0, 3)
+                  }
+
+                  override def isValid = true
+                }))
+              res = res.setMainKlass((klName, withGetter))
+              curCtx = curCtx.withIncreasedOffset(1)
             }
           }
         }
-        println(s"done compiling $t")
         Right(res)
       }
     }
   }
 
   override def postCompile(c: BytecodeBackendCtx, bcrs : BytecodeResult) = {
+    println(s"====== postCompile -- ${c.resToExtend.mainKlass._1}")
+    val withCtor = bcrs.withStepConstructor(List())
     if (c.doKlassDump) {
-      println("dumping classes...")
-      bcrs.writeToFile(Paths.get(s"/tmp/${bcrs.mainKlass._1}"))
+      withCtor.writeToFile(Paths.get(s"/tmp/${bcrs.mainKlass._1}"))
     }
-    Right(bcrs)
-  }
-
-  def emptyKl(name : String) : (String, Builder[Object]) = {
-    (name, new ByteBuddy()
-      .subclass(classOf[Object], ConstructorStrategy.Default.NO_CONSTRUCTORS)
-      .name(name)
-      .modifiers(ModifierContributor.Resolver.of(Visibility.PUBLIC, TypeManifestation.FINAL).resolve()))
+    Right(withCtor)
   }
 
   def addAllStepConstructors(toModify : (String, DynamicType.Builder[Object]), indexStack : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
@@ -422,7 +559,7 @@ class BytecodeBackend extends Backend[BytecodeBackendCtx, BytecodeResult] {
   * @param ctx the current compilation context
   * @param stepIdx if present, the index which we are increasing. Needs to be contained in ctx.
   */
-case class CreateStepObj(calleeClassDesc : String, ctx : BytecodeBackendCtx, stepIdx : Option[String]) extends  StackManipulation {
+private case class CreateStepObj(calleeClassDesc : String, ctx : BytecodeBackendCtx, stepIdx : Option[String]) extends  StackManipulation {
   override def isValid = true
 
   override def apply(mv: MethodVisitor, implementationContext: Context) = {
@@ -441,20 +578,21 @@ case class CreateStepObj(calleeClassDesc : String, ctx : BytecodeBackendCtx, ste
       }
     }
     val ctorDescr = s"(${"I"*ctx.indexStack.size})V"
+    println(s"calling Descr: $ctorDescr")
     mv.visitMethodInsn(Opcodes.INVOKESPECIAL, calleeClassDesc, "<init>", ctorDescr, false)
     mv.visitInsn(Opcodes.ARETURN)
     new StackManipulation.Size(1, maxStackSize)
   }
 }
 
-case class ToAppender(stackManipulation: StackManipulation) extends ByteCodeAppender {
+private case class ToAppender(stackManipulation: StackManipulation) extends ByteCodeAppender {
   override def apply(methodVisitor: MethodVisitor, implementationContext: Implementation.Context, instrumentedMethod: MethodDescription) = {
     val sz = stackManipulation.apply(methodVisitor, implementationContext)
     new ByteCodeAppender.Size(sz.getMaximalSize, instrumentedMethod.getStackSize)
   }
 }
 
-case class ToImpl(s : StackManipulation) extends Implementation {
+private case class ToImpl(s : StackManipulation) extends Implementation {
   override def appender(implementationTarget: Target) = ToAppender(s)
 
   override def prepare(instrumentedType: InstrumentedType) = instrumentedType
