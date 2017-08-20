@@ -1,8 +1,6 @@
-package com.github.kaeluka.cflat.test
+package com.github.kaeluka.cflat.test.ast
 
 import com.github.kaeluka.cflat.ast._
-import org.hamcrest.MatcherAssert._
-import org.hamcrest.Matchers._
 import org.junit.{Assert, Test}
 
 class TypeSpecTest {

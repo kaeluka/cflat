@@ -1,12 +1,12 @@
-package com.github.kaeluka.cflat.test
+package com.github.kaeluka.cflat.test.backend
 
 import com.github.kaeluka.cflat.ast._
-import com.github.kaeluka.cflat.backend.BytecodeBackendUtil
+import com.github.kaeluka.cflat.backend.BackendUtils
 import org.hamcrest.MatcherAssert._
 import org.hamcrest.Matchers._
 import org.junit.{Assert, Test}
 
-class BytecodeBackendUtilTest {
+class BackendUtilsTest {
   def foo_or_bar = Alt(("foo", None), ("bar", None))
   def foo_or_bar_or_baz = Alt(("foo", None), ("bar", None), ("baz", None))
 
@@ -23,6 +23,6 @@ class BytecodeBackendUtilTest {
         assertThat(frev(f(i, j)), equalTo((i, j)))
       }
     }
-    testPairingFunction(BytecodeBackendUtil.cantorPairingFunction, BytecodeBackendUtil.cantorPairingFunctionRev)
+    testPairingFunction(BackendUtils.cantorPairingFunction, BackendUtils.cantorPairingFunctionRev)
   }
 }
