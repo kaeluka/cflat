@@ -1,25 +1,40 @@
 package com.github.kaeluka.cflat.test.ast
 
-import com.github.kaeluka.cflat.ast._
-import org.junit.{Assert, Test}
+import com.github.kaeluka.cflat.ast.{Alt, Rep, Star, TypeSpec}
+import org.junit.Test
+import org.junit.Assert
+import org.hamcrest.MatcherAssert._
+import org.hamcrest.Matchers._
 
 class TypeSpecTest {
   def foo_or_bar = Alt(("foo", None), ("bar", None))
   def foo_or_bar_or_baz = Alt(("foo", None), ("bar", None), ("baz", None))
+  def star_next_ok = Star(Left("next"), Left("ok"))
 
-  def ten_times_eps = Rep("col", 10, None, "bar", None)
+  def ten_times_eps = Rep(10, Left("col"), Left("bar"))
 
   def assertSize(term : TypeSpec, n : Option[Int]) = {
     Assert.assertEquals(s"type spec $term must have size $n", n, term.getSize)
   }
 
   @Test
-  @throws[Exception]
-  def testGetSize() {
-    assertSize(foo_or_bar, Some(2))
-    assertSize(ten_times_eps, Some(10))
-    assertSize(Star("com/github/kaeluka/cflat/ast/test", ten_times_eps, /*FIXME*/ null), None)
+  def shape(): Unit = {
+    assertThat(ten_times_eps.shape()(0).asInstanceOf[Integer], org.hamcrest.Matchers.is(10.asInstanceOf[Integer]))
+    assertThat(ten_times_eps.shape()(1).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
+    assertThat(ten_times_eps.shape()(2).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
+
+    assertThat(star_next_ok.shape()(0).asInstanceOf[Integer], org.hamcrest.Matchers.is(0.asInstanceOf[Integer]))
+    assertThat(star_next_ok.shape()(1).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
+    assertThat(star_next_ok.shape()(2).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
   }
+
+//  @Test
+//  @throws[Exception]
+//  def testGetSize() {
+//    assertSize(foo_or_bar, Some(2))
+//    assertSize(ten_times_eps, Some(10))
+//    assertSize(Star("com/github/kaeluka/cflat/ast/test", ten_times_eps, /*FIXME*/ null), None)
+//  }
 
 //  @Test
 //  @throws[Exception]

@@ -1,28 +1,43 @@
-package com.github.kaeluka.cflat.backend
+package com.github.kaeluka.cflat.ast.cflat.backend
 
+import java.io._
 import java.lang.reflect.InvocationTargetException
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.util
 
-import com.github.kaeluka.cflat.ast._
-import com.github.kaeluka.cflat.util.TypeDescrFix
+import com.github.kaeluka.cflat.ast.TypeSpec
+import com.github.kaeluka.cflat.ast.cflat.util.TypeDescrFix
+import jdk.nashorn.internal.codegen.CompilerConstants
 import net.bytebuddy.ByteBuddy
+import net.bytebuddy.asm.AsmVisitorWrapper.Compound
 import net.bytebuddy.description.`type`.{TypeDefinition, TypeDescription}
+import net.bytebuddy.description.field.FieldDescription
 import net.bytebuddy.description.method.MethodDescription
 import net.bytebuddy.description.modifier.{ModifierContributor, TypeManifestation, Visibility}
 import net.bytebuddy.dynamic.DynamicType
 import net.bytebuddy.dynamic.DynamicType.Builder
 import net.bytebuddy.dynamic.scaffold.InstrumentedType
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy
+import net.bytebuddy.implementation.FieldAccessor.FieldNameExtractor
 import net.bytebuddy.implementation.Implementation.{Context, Target}
 import net.bytebuddy.implementation._
-import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, StackManipulation}
+import net.bytebuddy.implementation.bytecode.assign.primitive.PrimitiveBoxingDelegate
+import net.bytebuddy.implementation.bytecode.collection.ArrayFactory
+import net.bytebuddy.implementation.bytecode.constant.IntegerConstant
+import net.bytebuddy.implementation.bytecode.member.{FieldAccess, MethodInvocation}
+import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, Duplication, StackManipulation, TypeCreation}
 import net.bytebuddy.jar.asm.{Label, MethodVisitor, Opcodes}
+import net.bytebuddy.matcher.ElementMatchers._
+import org.apache.commons.io.IOUtils
+import net.bytebuddy.implementation.bytecode.member.FieldAccess
+import net.bytebuddy.matcher.ElementMatcher
+import net.bytebuddy.utility.JavaConstant
 
+import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 
-case class BytecodeBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: BytecodeResult, indexStack: List[(String, Option[Int], String)], recursionStack: List[(String, Option[Int], String)], doKlassDump: Option[String], offset: Int) {
-  def print(subj: String): BytecodeBackendCtx = {
+case class IdxClassBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: BytecodeResult, indexStack: List[(String, Option[Int])], recursionStack: List[(String, Option[Int], String)], doKlassDump: Option[OutputStream], offset: Int) {
+  def print(subj: String): IdxClassBackendCtx = {
     println(s"########### $subj ###########")
     println(s"main class    : ${this.resToExtend.mainKlass._1}")
     println(s"hidden classes: ${this.resToExtend.privateKlasses.map(_._1).mkString(", ")}")
@@ -34,37 +49,37 @@ case class BytecodeBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: 
   val treeBranchSizes: ArrayBuffer[Int] = ArrayBuffer()
   var nameIdx: Map[String,Int] = Map()
 
-  def withStar[t](recName: String, kl: String): BytecodeBackendCtx = {
-    BytecodeBackendCtx(packge, wholeSpec, resToExtend, (recName, None, kl) :: indexStack, recursionStack, doKlassDump, offset)
+  def withStar[t](recName: String, kl: String): IdxClassBackendCtx = {
+    IdxClassBackendCtx(packge, wholeSpec, resToExtend, (recName, None) :: indexStack, recursionStack, doKlassDump, offset)
   }
 
-  def pushIndex[t](indexName: String, n: Option[Int], kl: String): BytecodeBackendCtx = {
-    BytecodeBackendCtx(packge, wholeSpec, resToExtend, (indexName, n, kl) :: indexStack, recursionStack, doKlassDump, offset = 0)
+  def pushIndex[t](indexName: String, n: Option[Int]): IdxClassBackendCtx = {
+    IdxClassBackendCtx(packge, wholeSpec, resToExtend, (indexName, n) :: indexStack, recursionStack, doKlassDump, offset = 0)
   }
 
-  def pushRecursion[t](recName: String, innerSize: Option[Int], kl: String): BytecodeBackendCtx = {
-    BytecodeBackendCtx(packge, wholeSpec, resToExtend, indexStack, (recName, innerSize, kl) :: recursionStack, doKlassDump, offset = 0)
+  def pushRecursion[t](recName: String, innerSize: Option[Int], kl: String): IdxClassBackendCtx = {
+    IdxClassBackendCtx(packge, wholeSpec, resToExtend, indexStack, (recName, innerSize, kl) :: recursionStack, doKlassDump, offset = 0)
   }
 
-  def withResToExtend(res: BytecodeResult): BytecodeBackendCtx = {
-    BytecodeBackendCtx(packge, wholeSpec, res, indexStack, recursionStack, doKlassDump, offset)
+  def withResToExtend(res: BytecodeResult): IdxClassBackendCtx = {
+    IdxClassBackendCtx(packge, wholeSpec, res, indexStack, recursionStack, doKlassDump, offset)
   }
 
-  def mapResToExtend(f: BytecodeResult => BytecodeResult): BytecodeBackendCtx = {
+  def mapResToExtend(f: BytecodeResult => BytecodeResult): IdxClassBackendCtx = {
     this.withResToExtend(f(this.resToExtend))
   }
 
-  def mapMainKlass(f: Builder[Object] => Builder[Object]): BytecodeBackendCtx = {
+  def mapMainKlass(f: Builder[Object] => Builder[Object]): IdxClassBackendCtx = {
     this.mapResToExtend(_.setMainKlass(this.resToExtend.mainKlass._1, f(this.resToExtend.mainKlass._2)))
   }
 
-  def withKlassDump(jarName: String): BytecodeBackendCtx = {
-    BytecodeBackendCtx(packge, wholeSpec, resToExtend, indexStack, recursionStack, doKlassDump = Some(jarName), offset)
+  def withKlassDump(target: OutputStream): IdxClassBackendCtx = {
+    IdxClassBackendCtx(packge, wholeSpec, resToExtend, indexStack, recursionStack, doKlassDump = Some(target), offset)
   }
 
-  def withIncreasedOffset(deltaOffset: Int): BytecodeBackendCtx = {
+  def withIncreasedOffset(deltaOffset: Int): IdxClassBackendCtx = {
     //    println(s"offset is now: ${offset+1}")
-    BytecodeBackendCtx(packge, wholeSpec, resToExtend, indexStack, recursionStack, doKlassDump, offset + deltaOffset)
+    IdxClassBackendCtx(packge, wholeSpec, resToExtend, indexStack, recursionStack, doKlassDump, offset + deltaOffset)
   }
 
   def finializeIterators() = {
@@ -154,22 +169,54 @@ object BackendUtils {
 }
 
 object BytecodeResult {
-  def emptyKl(packge: String, name: String): (String, Builder[Object]) = {
+
+  def emptyKl(packge: String, x: TypeSpec, name: String): (String, Builder[Object]) = {
     (name, new ByteBuddy()
       .subclass(classOf[Object], ConstructorStrategy.Default.NO_CONSTRUCTORS)
       .name(packge+"."+name)
       .modifiers(ModifierContributor.Resolver.of(Visibility.PUBLIC, TypeManifestation.FINAL).resolve())
-      .defineField("stage", classOf[Int], Opcodes.ACC_PUBLIC))
+      .defineField("stage", classOf[Int], Opcodes.ACC_PUBLIC)
+      .defineField("expr", classOf[String], Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)
+      .value(x.pretty())
+      .defineField("shape", classOf[Array[Object]], Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)
+      .initializer(new ByteCodeAppender {
+        def shapeManipulation(shape: Array[Object]): StackManipulation = {
+          val inners = shape.toList
+            .map(sub => if (sub == null) 1 else sub)
+            .map {
+            case i: Integer =>
+              new StackManipulation {
+                override def apply(methodVisitor: MethodVisitor, implementationContext: Context): StackManipulation.Size = {
+                  methodVisitor.visitLdcInsn(i)
+                  methodVisitor.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false)
+                  new StackManipulation.Size(1, 1)
+                }
+                override def isValid: Boolean = true
+              }
+            case subshape: Array[Object] => shapeManipulation(subshape)
+            case other => throw new RuntimeException(other.toString)
+          }
+          ArrayFactory.forType(new TypeDescription.ForLoadedType(classOf[Object]).asGenericType()).withValues(inners)
+        }
+        override def apply(methodVisitor: MethodVisitor, implementationContext: Context, instrumentedMethod: MethodDescription): ByteCodeAppender.Size = {
+          val  size: StackManipulation.Size = new StackManipulation.Compound(
+            shapeManipulation(x.shape()),
+            FieldAccess.forField(implementationContext.getInstrumentedType.getDeclaredFields.filter(named("shape")).getOnly).write()
+          ).apply(methodVisitor, implementationContext)
+          new ByteCodeAppender.Size(size.getMaximalSize, instrumentedMethod.getStackSize)
+        }
+      })
+    )
   }
 
-  def empty(packge: String, name: String): BytecodeResult = {
-    BytecodeResult(emptyKl(packge, name), List(), List())
+  def empty(packge: String, x: TypeSpec, name: String): BytecodeResult = {
+    BytecodeResult(emptyKl(packge, x: TypeSpec, name), List(), List())
   }
 }
 case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), privateKlasses: List[(String, DynamicType.Builder[Object])], endKlasses: List[(String, DynamicType.Builder[Object])]) {
 
-  def writeToFile(jar: Path): Unit = {
-    val jarFile = jar.toFile
+  def writeTo(target: OutputStream, packge: String): Unit = {
+//    val jarFile = jar.toFile
     var total: DynamicType.Unloaded[_] = null
 
     for (kl <- this.privateKlasses) {
@@ -185,7 +232,16 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
     } else {
       total = this.mainKlass._2.make()
     }
-    total.toJar(jarFile)
+    val tmp = Files.createTempDirectory("temp") //;("temp", System.nanoTime().toString())
+    println(s"saving into temp file: ${tmp}")
+    tmp.toFile.mkdirs()
+//    tmp.toFile.deleteOnExit()
+    total.saveIn(tmp.toFile)
+    val fr = new FileInputStream(Paths.get(tmp.toString, packge.replace(".","/")+"/"+mainKlass._1+".class").toString)
+    IOUtils.copy(fr, target)
+    target.flush()
+    target.close()
+    fr.close()
   }
 
   def getLoaded: Class[_] = {
@@ -241,8 +297,8 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
     //    println(s"adding ctor for ${mainKlass._1}, ${indexStack.size} args")
     val ctorImpl = ToImpl(new StackManipulation {
       override def apply(mv: MethodVisitor, implCtx: Context) = {
-        //        mv.visitLdcInsn("from withStepConstructor")
-        //        mv.visitInsn(Opcodes.POP)
+        mv.visitLdcInsn("from withStepConstructor")
+        mv.visitInsn(Opcodes.POP)
         mv.visitVarInsn(Opcodes.ALOAD, 0)
         mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
         var crash: Option[Label] = None
@@ -251,7 +307,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
             if (crash.isEmpty) {
               crash = Option(new Label())
             }
-            // bounds check:
+            //FIXME: bounds check:
 //            mv.visitVarInsn(Opcodes.ILOAD, idx._2+1)
 //            mv.visitLdcInsn(idx._1._2.get)
 //            mv.visitJumpInsn(Opcodes.IF_ICMPGT, crash.get)
@@ -323,7 +379,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
     * @param ctx the context
     * @return the modified result
     */
-  def withMutableRecStep(ctx: BytecodeBackendCtx, name: String): BytecodeResult = {
+  def withMutableRecStep(ctx: IdxClassBackendCtx, name: String, max: Option[Int]): BytecodeResult = {
     def addStep(kl: (String, Builder[Object])): Builder[Object] = {
       //      println(s"adding recursive step: ${kl._1} --$name--> ${mainKlass._1}")
       val random_acc_parameters = new util.ArrayList[TypeDefinition](ctx.indexStack.size)
@@ -333,7 +389,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
         .intercept(ToImpl(MutableStep(ctx, stepIdx = name, None)))
         .defineMethod(name+"_nth", BackendUtils.getTypeDesc(ctx.packge, mainKlass._1), Opcodes.ACC_PUBLIC)
         .withParameters(random_acc_parameters)
-        .intercept(ToImpl(MutableRandomAccessStep(kl._1, ctx, stepIdx = name)))
+        .intercept(ToImpl(MutableRandomAccessStep(kl._1, ctx, stepIdx = name, max)))
     }
     this.endKlasses match {
       case List() => BytecodeResult((mainKlass._1, addStep(mainKlass)), privateKlasses, List())
@@ -352,7 +408,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
 //    * @param ctx the context
 //    * @return the modified result
 //    */
-//  def withRecStep(ctx: BytecodeBackendCtx, name: String): BytecodeResult = {
+//  def withRecStep(ctx: IdxClassBackendCtx, name: String): BytecodeResult = {
 //    def addStep(kl: (String, Builder[Object])): Builder[Object] = {
 //      println(s"adding recursive step: ${kl._1} --$name--> ${mainKlass._1}")
 //      val random_acc_parameters = new util.ArrayList[TypeDefinition](ctx.indexStack.size)
@@ -373,14 +429,14 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
 //    }
 //  }
 
-  def withStepOrGetter(ctx: BytecodeBackendCtx, stepName: String, oTarget: Option[BytecodeResult]): BytecodeResult = {
+  def withStepOrGetter(ctx: IdxClassBackendCtx, stepName: String, oTarget: Option[BytecodeResult]): BytecodeResult = {
     oTarget match {
       case None => withGetter(ctx, stepName)
       case Some(target) => this.withStep(ctx, stepName, 1, target)
     }
   }
 
-  def withStep(ctx: BytecodeBackendCtx, stepName: String, delta: Int, target: BytecodeResult): BytecodeResult = {
+  def withStep(ctx: IdxClassBackendCtx, stepName: String, delta: Int, target: BytecodeResult): BytecodeResult = {
     def addStep(kl: (String, Builder[Object])): Builder[Object] = {
       //      println(s"adding step: ${kl._1} --$stepName--> ${target.mainKlass._1}")
       kl._2
@@ -396,7 +452,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
     }
   }
 
-  def withGetter(ctx: BytecodeBackendCtx, stepName: String): BytecodeResult = {
+  def withGetter(ctx: IdxClassBackendCtx, stepName: String): BytecodeResult = {
     println(s"adding getter $stepName to klass ${ctx.packge+"."+this.mainKlass._1}")
     val withGetter = this.mainKlass._2
       .defineMethod(stepName, classOf[Int], Opcodes.ACC_PUBLIC)
@@ -435,7 +491,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
   }
 }
 
-private case class MutableRandomAccessStep(calleeClassName: String, ctx: BytecodeBackendCtx, stepIdx: String, info: String = "") extends  StackManipulation {
+private case class MutableRandomAccessStep(calleeClassName: String, ctx: IdxClassBackendCtx, stepIdx: String, max: Option[Int], info: String = "") extends  StackManipulation {
   override def isValid = true
 
   override def apply(mv: MethodVisitor, implCtx: Context) = {
@@ -449,13 +505,45 @@ private case class MutableRandomAccessStep(calleeClassName: String, ctx: Bytecod
     mv.visitVarInsn(Opcodes.ILOAD, 1)
     mv.visitInsn(Opcodes.IADD)
     mv.visitFieldInsn(Opcodes.PUTFIELD, classDesc, s"idx_$stepIdx", "I")
+
+    var crash: Option[Label] = None
+    max match {
+      case Some(m) =>
+        crash = Some(new Label())
+        //FIXME: continuehere
+        mv.visitVarInsn(Opcodes.ALOAD, 0)
+        mv.visitFieldInsn(Opcodes.GETFIELD, classDesc, s"idx_$stepIdx", "I")
+        mv.visitLdcInsn(m-1)
+        mv.visitJumpInsn(Opcodes.IF_ICMPGT, crash.get)
+      case None => ()
+    }
     mv.visitVarInsn(Opcodes.ALOAD, 0)
     mv.visitInsn(Opcodes.ARETURN)
+    crash match {
+      case Some(lbl) => {
+        //FIXME start using exception checks again if possible!
+        mv.visitLabel(lbl)
+        val locals = new Array[Object](2)
+        locals(0) = implCtx.getInstrumentedType.getName.replace(".", "/")
+        locals(1) = Opcodes.INTEGER
+//        for (i <- 1 to ctx.indexStack.size) {
+//          locals(i) = Opcodes.INTEGER
+//        }
+        mv.visitFrame(Opcodes.F_FULL, 2, locals, 0, new Array[Object](0))
+        mv.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
+        mv.visitInsn(Opcodes.DUP)
+        mv.visitLdcInsn(s"${implCtx.getInstrumentedType.asErasure().getSimpleName}:" +
+          s"  -> index ${stepIdx} accessed out of bounds [0..${max.get})")
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "(Ljava/lang/Object;)V", false)
+        mv.visitInsn(Opcodes.ATHROW)
+      }
+      case None => ()
+    }
     new StackManipulation.Size(0, 3)
   }
 }
 
-//private case class CreateRandomAccessStepObj(calleeClassName: String, ctx: BytecodeBackendCtx, stepIdx: Option[String], info: String = "") extends  StackManipulation {
+//private case class CreateRandomAccessStepObj(calleeClassName: String, ctx: IdxClassBackendCtx, stepIdx: Option[String], info: String = "") extends  StackManipulation {
 //  override def isValid = true
 //
 //  override def apply(mv: MethodVisitor, implementationContext: Context) = {
@@ -488,7 +576,7 @@ private case class MutableRandomAccessStep(calleeClassName: String, ctx: Bytecod
   * @param ctx the current compilation context
   * @param stepIdx if present, the index which we are increasing. Needs to be contained in ctx.
   */
-private case class CreateStepObj(calleeClassName: String, ctx: BytecodeBackendCtx, stepIdx: Option[String], base: Option[Int], info: String = "") extends  StackManipulation {
+private case class CreateStepObj(calleeClassName: String, ctx: IdxClassBackendCtx, stepIdx: Option[String], base: Option[Int], info: String = "") extends  StackManipulation {
   override def isValid = true
 
   override def apply(mv: MethodVisitor, implementationContext: Context) = {
@@ -527,7 +615,7 @@ private case class CreateStepObj(calleeClassName: String, ctx: BytecodeBackendCt
   * @param ctx the current compilation context
   * @param stepIdx if present, the index which we are increasing. Needs to be contained in ctx.
   */
-private case class MutableStep(ctx: BytecodeBackendCtx, stepIdx: String, base: Option[Int]) extends  StackManipulation {
+private case class MutableStep(ctx: IdxClassBackendCtx, stepIdx: String, base: Option[Int]) extends  StackManipulation {
   override def isValid = true
 
   override def apply(mv: MethodVisitor, implementationContext: Context) = {

@@ -1,4 +1,4 @@
-package com.github.kaeluka.cflat.util
+package com.github.kaeluka.cflat.ast.cflat.util
 
 import java.util
 

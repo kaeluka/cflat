@@ -1,7 +1,7 @@
-//package com.github.kaeluka.cflat.backend
+//package com.github.kaeluka.cflat.ast.cflat.backend
 //import java.nio.file.Paths
 //
-//import com.github.kaeluka.cflat.ast._
+//import com.github.kaeluka.cflat.ast.cflat.ast._
 //import net.bytebuddy.description.`type`.{TypeDefinition, TypeDescription}
 //import net.bytebuddy.dynamic.DynamicType
 //import net.bytebuddy.dynamic.DynamicType.Builder
@@ -10,15 +10,15 @@
 //import net.bytebuddy.implementation.bytecode.StackManipulation
 //import net.bytebuddy.jar.asm.{MethodVisitor, Opcodes}
 //
-//class ImmutableBackend extends Backend[BytecodeBackendCtx] {
+//class ImmutableBackend extends Backend[IdxClassBackendCtx] {
 //  override def emptyCtx(x : TypeSpec, name : String) = {
-//    val packge = "com.github.kaeluka.cflat.compiled"
+//    val packge = "com.github.kaeluka.cflat.ast.cflat.compiled"
 //    val kl: (String, Builder[Object]) = (name, this.addStepConstructor(BytecodeResult.emptyKl(packge, name), List()))
 //
-//    this.addStaticConstructor(BytecodeBackendCtx(packge, x, BytecodeResult.empty(packge, name), List(), List(), doKlassDump = false, offset = 0))
+//    this.addStaticConstructor(IdxClassBackendCtx(packge, x, BytecodeResult.empty(packge, name), List(), List(), doKlassDump = false, offset = 0))
 //  }
 //
-//  override def compile(c: BytecodeBackendCtx, name : String, t: TypeSpec) : Either[CompilerError, BytecodeBackendCtx] = {
+//  override def compile(c: IdxClassBackendCtx, name : String, t: TypeSpec) : Either[CompilerError, IdxClassBackendCtx] = {
 //    val resToExtend: BytecodeResult = c.resToExtend
 //    val klName = resToExtend.mainKlass._1
 //    val builder = resToExtend.mainKlass._2
@@ -125,7 +125,7 @@
 //    }
 //  }
 //
-//  override def postCompile(bcrs : BytecodeBackendCtx) = {
+//  override def postCompile(bcrs : IdxClassBackendCtx) = {
 //    val withCtor = bcrs.mapResToExtend(res => {
 //      res.withStepConstructor(List())
 //    }).finializeIterators()
@@ -170,7 +170,7 @@
 //      .intercept(ctorImpl)
 //  }
 //
-//  def addStaticConstructor(ctx : BytecodeBackendCtx) : BytecodeBackendCtx = {
+//  def addStaticConstructor(ctx : IdxClassBackendCtx) : IdxClassBackendCtx = {
 //    val descr: String = (ctx.packge + "." + ctx.resToExtend.mainKlass._1).replace(".", "/")
 //    val clinitManip = new StackManipulation {
 //      override def apply(mv: MethodVisitor, implCtx: Context) = {
@@ -208,7 +208,7 @@
 //    indexStack.foldRight(toModify)({case (f, acc) => addIndexField(acc, f)})
 //  }
 //
-//  def addRecursionMethods(toModify : (String, DynamicType.Builder[Object]))(implicit ctx : BytecodeBackendCtx) : (String, DynamicType.Builder[Object]) = {
+//  def addRecursionMethods(toModify : (String, DynamicType.Builder[Object]))(implicit ctx : IdxClassBackendCtx) : (String, DynamicType.Builder[Object]) = {
 //    ctx.indexStack.foldRight(toModify)({case ((name, osz, kl), acc) => {
 //      println(s"==> public $kl ${toModify._1}::rec_$name() | recursion method")
 //      (acc._1, acc._2
