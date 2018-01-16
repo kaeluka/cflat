@@ -1,25 +1,9 @@
 package com.github.kaeluka.cflat.ast.cflat.backend
 
-import java.lang.reflect.InvocationTargetException
-import java.nio.file.{Path, Paths}
-import java.util
-
 import com.github.kaeluka.cflat.ast._
-import com.github.kaeluka.cflat.ast.cflat.util.TypeDescrFix
-import net.bytebuddy.ByteBuddy
-import net.bytebuddy.description.`type`.{TypeDefinition, TypeDescription}
-import net.bytebuddy.description.method.MethodDescription
-import net.bytebuddy.description.modifier.{ModifierContributor, TypeManifestation, Visibility}
 import net.bytebuddy.dynamic.DynamicType
 import net.bytebuddy.dynamic.DynamicType.Builder
-import net.bytebuddy.dynamic.scaffold.InstrumentedType
-import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy
-import net.bytebuddy.implementation.Implementation.{Context, Target}
-import net.bytebuddy.implementation._
-import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, StackManipulation}
-import net.bytebuddy.jar.asm.{Label, MethodVisitor, Opcodes}
-
-import scala.collection.mutable.ArrayBuffer
+import net.bytebuddy.jar.asm.Opcodes
 
 class IdxClassBackend extends Backend[IdxClassBackendCtx] {
   override def emptyCtx(x : TypeSpec, packge: String, name: String): IdxClassBackendCtx = {
@@ -88,8 +72,10 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
                 // There is an open recursion, and this getter should not return
                 // an index, but go back to the starting point of the recursion!
                 curCtx = curCtx.mapMainKlass(_
-                        .defineMethod(labelled._1, BackendUtils.getTypeDesc(curCtx.packge, curCtx.recursionStack.head._3), Opcodes.ACC_PUBLIC)
-                        .intercept(ToImpl(MutableStep(curCtx, curCtx.recursionStack.head._1, Some(curCtx.recursionStack.head._2.get))))
+                  .defineMethod(labelled._1, BackendUtils.getTypeDesc(curCtx.packge, curCtx.recursionStack.head._3), Opcodes.ACC_PUBLIC)
+                  .intercept(ToImpl(MutableStep(curCtx, curCtx.recursionStack.head._1, Some(curCtx.recursionStack.head._2.get))))
+                  .defineMethod(s"${labelled._1}_back", BackendUtils.getTypeDesc(curCtx.packge, curCtx.recursionStack.head._3), Opcodes.ACC_PUBLIC)
+                  .intercept(ToImpl(MutableBackwardsStep(curCtx, curCtx.recursionStack.head._1, Some(curCtx.recursionStack.head._2.get))))
                 ).withIncreasedOffset(1)
               } else {
                 curCtx = curCtx
@@ -106,13 +92,10 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
 
   override def postCompile(ctx: IdxClassBackendCtx): IdxClassBackendCtx = {
     val withCtor = ctx.mapResToExtend(res => {
-      res.withStepConstructor(List())
-    }).finializeIterators()
-    ctx.doKlassDump match {
-      case Some(bw) =>
-        withCtor.resToExtend.writeTo(bw, ctx.packge)
-      case None => ()
-    }
+      res
+        .withStepConstructor(List())
+    }).withCopyMethod()
+    ctx.doKlassDump.foreach(withCtor.resToExtend.writeTo(_, ctx.packge))
     withCtor
   }
 

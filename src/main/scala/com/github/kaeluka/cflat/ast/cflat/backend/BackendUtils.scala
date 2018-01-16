@@ -2,36 +2,28 @@ package com.github.kaeluka.cflat.ast.cflat.backend
 
 import java.io._
 import java.lang.reflect.InvocationTargetException
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Paths}
 import java.util
 
 import com.github.kaeluka.cflat.ast.TypeSpec
 import com.github.kaeluka.cflat.ast.cflat.util.TypeDescrFix
-import jdk.nashorn.internal.codegen.CompilerConstants
 import net.bytebuddy.ByteBuddy
-import net.bytebuddy.asm.AsmVisitorWrapper.Compound
+import net.bytebuddy.asm.Advice.Return
 import net.bytebuddy.description.`type`.{TypeDefinition, TypeDescription}
-import net.bytebuddy.description.field.FieldDescription
 import net.bytebuddy.description.method.MethodDescription
 import net.bytebuddy.description.modifier.{ModifierContributor, TypeManifestation, Visibility}
 import net.bytebuddy.dynamic.DynamicType
 import net.bytebuddy.dynamic.DynamicType.Builder
 import net.bytebuddy.dynamic.scaffold.InstrumentedType
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy
-import net.bytebuddy.implementation.FieldAccessor.FieldNameExtractor
 import net.bytebuddy.implementation.Implementation.{Context, Target}
 import net.bytebuddy.implementation._
-import net.bytebuddy.implementation.bytecode.assign.primitive.PrimitiveBoxingDelegate
 import net.bytebuddy.implementation.bytecode.collection.ArrayFactory
-import net.bytebuddy.implementation.bytecode.constant.IntegerConstant
-import net.bytebuddy.implementation.bytecode.member.{FieldAccess, MethodInvocation}
-import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, Duplication, StackManipulation, TypeCreation}
+import net.bytebuddy.implementation.bytecode.member.{FieldAccess, MethodReturn, MethodVariableAccess}
+import net.bytebuddy.implementation.bytecode.{ByteCodeAppender, Duplication, StackManipulation}
 import net.bytebuddy.jar.asm.{Label, MethodVisitor, Opcodes}
 import net.bytebuddy.matcher.ElementMatchers._
 import org.apache.commons.io.IOUtils
-import net.bytebuddy.implementation.bytecode.member.FieldAccess
-import net.bytebuddy.matcher.ElementMatcher
-import net.bytebuddy.utility.JavaConstant
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
@@ -44,10 +36,6 @@ case class IdxClassBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: 
     println(s"end classes   : ${this.resToExtend.endKlasses.map(_._1).mkString(", ")}")
     this
   }
-
-  val bb: ByteBuddy = new ByteBuddy()
-  val treeBranchSizes: ArrayBuffer[Int] = ArrayBuffer()
-  var nameIdx: Map[String,Int] = Map()
 
   def withStar[t](recName: String, kl: String): IdxClassBackendCtx = {
     IdxClassBackendCtx(packge, wholeSpec, resToExtend, (recName, None) :: indexStack, recursionStack, doKlassDump, offset)
@@ -82,13 +70,46 @@ case class IdxClassBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: 
     IdxClassBackendCtx(packge, wholeSpec, resToExtend, indexStack, recursionStack, doKlassDump, offset + deltaOffset)
   }
 
-  def finializeIterators() = {
-    def addIters(builder: Builder[Object]): Builder[Object] = {
+  def withCopyMethod(): IdxClassBackendCtx = {
+    this.mapMainKlass(builder => {
       builder
-//        .defineMethod("spliterator", new TypeDescription.ForLoadedType(classOf[java.util.Spliterator[_]]))
-//        .intercept(ExceptionMethod.throwing(classOf[NoSuchMethodError]))
-    }
-    this.mapResToExtend(_.mapAllClasses(addIters))
+        .defineMethod("copy", BackendUtils.getTypeDesc(this.packge, this.resToExtend.mainKlass._1), Opcodes.ACC_PUBLIC)
+          .intercept(new Implementation {
+            override def appender(implementationTarget: Target): ByteCodeAppender = {
+              new ByteCodeAppender {
+                override def apply(mv: MethodVisitor, iCtx: Context, instrumentedMethod: MethodDescription): ByteCodeAppender.Size = {
+                  val instanceCreateStackManip = new StackManipulation {
+                    override def apply(mv: MethodVisitor, iCtx: Context): StackManipulation.Size = {
+                      mv.visitTypeInsn(Opcodes.NEW, iCtx.getInstrumentedType.getDescriptor)
+                      mv.visitInsn(Opcodes.DUP)
+                      mv.visitMethodInsn(Opcodes.INVOKESPECIAL, iCtx.getInstrumentedType.getDescriptor, "<init>", "()V", false)
+                      new StackManipulation.Size(1, 2)
+                    }
+                    override def isValid: Boolean = true
+                  }
+                  val manips =
+                    instanceCreateStackManip ::
+                      iCtx.getInstrumentedType.getDeclaredFields.filter(not(isStatic())).flatMap(
+                        fld => List(
+                          Duplication.SINGLE,
+                          MethodVariableAccess.loadThis(),
+                          FieldAccess.forField(fld).read(),
+                          FieldAccess.forField(fld).write()
+                        )
+                      ).toList ++ List(MethodReturn.REFERENCE)
+                  val size = new StackManipulation.Compound(manips)
+                    .apply(mv, iCtx)
+                  new ByteCodeAppender.Size(
+                    size.getMaximalSize,
+                    instrumentedMethod.getStackSize)
+                }
+              }
+            }
+
+            override def prepare(instrumentedType: InstrumentedType): InstrumentedType = instrumentedType
+          })
+//        .intercept(ExceptionMethod.throwing(classOf[NotImplementedError], "copy method not implemented"))
+    })
   }
 }
 
@@ -271,28 +292,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
       .defineMethod(nextStage, BackendUtils.getTypeDesc(packge, className), Opcodes.ACC_PUBLIC)
       .intercept(ctorImpl)))
   }
-  def withMutableStep(packge: String, className: String, stepName: String): BytecodeResult = {
-    val ctorImpl = ToImpl(new StackManipulation {
-      override def apply(mv: MethodVisitor, implCtx: Context) = {
-        val classDesc: String = implCtx.getInstrumentedType.asErasure().getName.replace(".", "/")
-        mv.visitLdcInsn("from withMutableStep(stepName)")
-        mv.visitInsn(Opcodes.POP)
-        mv.visitVarInsn(Opcodes.ALOAD, 0)
-        mv.visitInsn(Opcodes.DUP)
-        mv.visitFieldInsn(Opcodes.GETFIELD, classDesc, s"idx_$stepName", "I")
-        mv.visitInsn(Opcodes.ICONST_1)
-        mv.visitInsn(Opcodes.IADD)
-        mv.visitFieldInsn(Opcodes.PUTFIELD, classDesc, s"idx_$stepName", "I")
-        mv.visitVarInsn(Opcodes.ALOAD, 0)
-        mv.visitInsn(Opcodes.ARETURN)
-        new StackManipulation.Size(0, 3)
-      }
-      override def isValid = true
-    })
-    setMainKlass((mainKlass._1, mainKlass._2
-      .defineMethod(stepName, BackendUtils.getTypeDesc(packge, className), Opcodes.ACC_PUBLIC)
-      .intercept(ctorImpl)))
-  }
+
   def withStepConstructor(indexStack: List[(String, Option[Int], String)]): BytecodeResult = {
     //    println(s"adding ctor for ${mainKlass._1}, ${indexStack.size} args")
     val ctorImpl = ToImpl(new StackManipulation {
@@ -387,6 +387,8 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
       kl._2
         .defineMethod(name, BackendUtils.getTypeDesc(ctx.packge, mainKlass._1), Opcodes.ACC_PUBLIC)
         .intercept(ToImpl(MutableStep(ctx, stepIdx = name, None)))
+        .defineMethod(s"${name}_back", BackendUtils.getTypeDesc(ctx.packge, mainKlass._1), Opcodes.ACC_PUBLIC)
+        .intercept(ToImpl(MutableBackwardsStep(ctx, stepIdx = name, None)))
         .defineMethod(name+"_nth", BackendUtils.getTypeDesc(ctx.packge, mainKlass._1), Opcodes.ACC_PUBLIC)
         .withParameters(random_acc_parameters)
         .intercept(ToImpl(MutableRandomAccessStep(kl._1, ctx, stepIdx = name, max)))
@@ -618,8 +620,8 @@ private case class CreateStepObj(calleeClassName: String, ctx: IdxClassBackendCt
 private case class MutableStep(ctx: IdxClassBackendCtx, stepIdx: String, base: Option[Int]) extends  StackManipulation {
   override def isValid = true
 
-  override def apply(mv: MethodVisitor, implementationContext: Context) = {
-    val classDesc = implementationContext.getInstrumentedType.asErasure().getCanonicalName.replace(".", "/")
+  override def apply(mv: MethodVisitor, iCtx: Context) = {
+    val classDesc = iCtx.getInstrumentedType.asErasure().getCanonicalName.replace(".", "/")
     mv.visitLdcInsn(s"from MutableStep(ctx={...}, stepIdx=$stepIdx)")
     mv.visitInsn(Opcodes.POP)
     mv.visitVarInsn(Opcodes.ALOAD, 0)
@@ -637,6 +639,38 @@ private case class MutableStep(ctx: IdxClassBackendCtx, stepIdx: String, base: O
     mv.visitInsn(Opcodes.IADD)
     mv.visitInsn(Opcodes.ICONST_1)
     mv.visitInsn(Opcodes.IADD)
+    mv.visitFieldInsn(Opcodes.PUTFIELD, classDesc, s"idx_$stepIdx", "I")
+    mv.visitVarInsn(Opcodes.ALOAD, 0)
+    mv.visitInsn(Opcodes.ARETURN)
+    new StackManipulation.Size(1, 4)
+  }
+}
+/**
+  * Allocates an object of the callee-class type, passing any locally existing coordinates to its constructor.
+  * @param ctx the current compilation context
+  * @param stepIdx if present, the index which we are increasing. Needs to be contained in ctx.
+  */
+
+private case class MutableBackwardsStep(ctx: IdxClassBackendCtx, stepIdx: String, base: Option[Int]) extends  StackManipulation {
+  override def isValid = true
+
+  override def apply(mv: MethodVisitor, iCtx: Context) = {
+    val classDesc = iCtx.getInstrumentedType.getDescriptor
+    mv.visitLdcInsn(s"from MutableBackwardsStep(ctx={...}, stepIdx=$stepIdx)")
+    mv.visitInsn(Opcodes.POP)
+    mv.visitVarInsn(Opcodes.ALOAD, 0)
+    mv.visitInsn(Opcodes.DUP)
+    mv.visitVarInsn(Opcodes.ALOAD, 0)
+    mv.visitFieldInsn(Opcodes.GETFIELD, classDesc, s"idx_$stepIdx", "I")
+    mv.visitInsn(Opcodes.ICONST_1)
+    mv.visitInsn(Opcodes.ISUB)
+    base match {
+      case Some(b) => {
+        mv.visitLdcInsn(b)
+        mv.visitInsn(Opcodes.IDIV)
+      }
+      case None => {}
+    }
     mv.visitFieldInsn(Opcodes.PUTFIELD, classDesc, s"idx_$stepIdx", "I")
     mv.visitVarInsn(Opcodes.ALOAD, 0)
     mv.visitInsn(Opcodes.ARETURN)

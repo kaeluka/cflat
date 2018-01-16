@@ -42,12 +42,12 @@ public class StorageTest extends junit.framework.TestCase {
 
     @Test
     public void test() {
-        Storage storage = this.mkStorage();
+        Storage<Integer> storage = this.mkStorage();
         assertThat(storage, notNullValue());
-        for (int i=0; i<=1000000; i++) {
+        for (int i=0; i<=100000; i++) {
             storage = storage.set(i, -i);
         }
-        for (int i=0; i<=1000000; i++) {
+        for (int i=0; i<=100000; i++) {
             assertThat(storage.get(i), is(-i));
         }
 

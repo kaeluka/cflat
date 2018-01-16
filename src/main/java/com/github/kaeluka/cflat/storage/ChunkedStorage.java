@@ -4,52 +4,52 @@ package com.github.kaeluka.cflat.storage;
 import com.github.kaeluka.cflat.storage.Storage;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class ChunkedStorage<T> implements Storage<T> {
-    private final static int CHUNK_SIZE = 1000;
-    private final ArrayList<Object[]> chunks;
+    private final static int CHUNK_SIZE = 1024;
+    private final static int CHUNK_AMOUNT = 64;
+    private Object[][] chunks = new Object[CHUNK_AMOUNT][];
 
-    private static int chunk_no(final long i) {
+    private static int chunk_no(final int i) {
         return (int)(i / CHUNK_SIZE);
     }
 
-    private static int chunk_idx(final long i) {
-        return (int)(i % CHUNK_SIZE);
+    private static int chunk_idx(final int i) {
+        // since CHUNK_SIZE is always a power of two, we can speed the
+        // modulo operation up!
+        return ((int)i & CHUNK_SIZE - 1);
     }
 
-    private Object[] getEnsureChunk(final long i) {
+    private Object[] getEnsureChunk(final int i) {
         final int chunk_no = chunk_no(i);
 
-        chunks.ensureCapacity(chunk_no+1);
-        while (chunks.size() <= chunk_no) {
-            chunks.add(null);
+        if (chunks.length <= chunk_no) {
+            chunks = Arrays.copyOf(chunks, chunk_no*2);
         }
 
-        if (chunks.get(chunk_no) == null) {
+        if (chunks[chunk_no] == null) {
             final Object[] new_chunk = new Object[CHUNK_SIZE];
-            chunks.set(chunk_no, new_chunk);
+            chunks[chunk_no] = new_chunk;
             return new_chunk;
         } else {
-            return chunks.get(chunk_no);
+            return chunks[chunk_no];
         }
     }
-    private Object[] getChunk(final long i) {
+
+    private Object[] getChunk(final int i) {
         final int chunk_no = chunk_no(i);
 
-        if (chunks.size() <= chunk_no) {
+        if (chunks.length <= chunk_no) {
             return null;
         } else {
-            return chunks.get(chunk_no);
+            return chunks[chunk_no];
         }
-    }
-
-    public ChunkedStorage() {
-        this.chunks = new ArrayList<>();
     }
 
     @Override
-    public T get(final long i) {
+    public T get(final int i) {
         final Object[] chunk = this.getChunk(i);
         if (chunk != null) {
             return (T) chunk[chunk_idx(i)];
@@ -59,14 +59,15 @@ public class ChunkedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public Storage<T> set(final long i, final T x) {
-        this.getEnsureChunk(i)[chunk_idx(i)] = x;
+    public Storage<T> set(final int i, final T x) {
+        final Object[] ensuredChunk = this.getEnsureChunk(i);
+        ensuredChunk[chunk_idx(i)] = x;
         return this;
     }
 
     @Override
     public Storage<T> clear() {
-        this.chunks.clear();
+        this.chunks = new Object[CHUNK_AMOUNT][];
         return this;
     }
 }

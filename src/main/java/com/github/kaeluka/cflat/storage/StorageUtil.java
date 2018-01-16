@@ -1,18 +1,11 @@
 package com.github.kaeluka.cflat.storage;
 
-import java.util.Spliterator;
-import java.util.Spliterators;
-import java.util.function.IntConsumer;
-import java.util.function.LongConsumer;
-import java.util.stream.IntStream;
-import java.util.stream.StreamSupport;
-
 public class StorageUtil {
-    public static int INFINITE = 0;
-    public static IndexSpliterator childIndices(final long root, final Object[] shape) {
+    public static int LOOP_SIZE_INFINITE = 0;
+    public static Iteration childIndices(final long root, final Object[] shape) {
         assert(shape.length >= 1);
         if (shape.length == 1) {
-            if ((int)shape[0] == INFINITE) {
+            if ((int)shape[0] == LOOP_SIZE_INFINITE) {
                 return null;
             } else {
                 return null; //IntStream.range(0, shape[0]).spliterator();

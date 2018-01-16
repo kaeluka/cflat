@@ -5,15 +5,15 @@ import java.util.TreeMap;
 import java.util.stream.IntStream;
 
 public class MapStorage<T> implements Storage<T> {
-    private final Map<Long, Object> map = new TreeMap<>();
+    private final Map<Integer, Object> map = new TreeMap<>();
 
     @Override
-    public T get(final long i) {
+    public T get(final int i) {
         return (T) this.map.get(i);
     }
 
     @Override
-    public Storage<T> set(final long i, final T x) {
+    public Storage<T> set(final int i, final T x) {
         this.map.put(i, x);
         return this;
     }

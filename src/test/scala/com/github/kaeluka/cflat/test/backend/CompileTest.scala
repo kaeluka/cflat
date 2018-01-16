@@ -57,10 +57,17 @@ class CompileTest {
 
   @Test
   def shortList() {
-    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "ok",                print = true), equalTo(0))
-    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.ok",           print = true), equalTo(1))
-    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next.ok",      print = true), equalTo(2))
-    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next.next.ok", print = true), equalTo(3))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "ok"                ), equalTo(0))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.ok"           ), equalTo(1))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next.ok"      ), equalTo(2))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next.next.ok" ), equalTo(3))
+  }
+
+  @Test
+  def shortList_back() {
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "ok"                ), equalTo(0))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next_back.ok" ), equalTo(0))
+    assertThat(BackendUtils.getPath(mkInstance(shortListClass), "next.next.next.next_back.ok" ), equalTo(2))
   }
 
   @Test
@@ -113,5 +120,21 @@ class CompileTest {
     assertThat(buf.toSet.size, equalTo(noOfValues))
     assertThat(buf.min, equalTo(0))
     assertThat(buf.max, equalTo(noOfValues-1))
+  }
+
+  @Test
+  def smallTreeBack() = {
+    assertThat(BackendUtils.getPath(mkInstance(smallTreeClass), "l.l.ok"),
+      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "l.l.l.l_back.ok")))
+
+    assertThat(BackendUtils.getPath(mkInstance(smallTreeClass), "r.r.ok"),
+      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "r.r.r.r_back.ok")))
+
+    assertThat(BackendUtils.getPath(mkInstance(smallTreeClass), "ok"),
+      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "l.r.l.r.l.r.l_back.r_back.l_back.r_back.l_back.r_back.ok")))
+
+    //l_back and r_back are equivalent:
+    assertThat(BackendUtils.getPath(mkInstance(smallTreeClass), "ok"),
+      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "l.r.l.r.l.r.l_back.l_back.l_back.l_back.l_back.l_back.ok")))
   }
 }

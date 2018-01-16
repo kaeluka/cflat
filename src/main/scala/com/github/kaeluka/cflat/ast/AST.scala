@@ -119,13 +119,13 @@ object Alt {
 }
 
 case class Alt(a : (String, Option[TypeSpec]), rest : List[(String, Option[TypeSpec])]) extends TypeSpec {
-//  override def getSize = {
-//    (a :: rest).foldRight(Option(0))(
-//      {
-//        case (t, oacc) => for (acc <- oacc) yield acc + t._2.map(_.getSize).getOrElse(1).asInstanceOf[Int]
-//      }
-//    )
-//  }
+  override def getSize = {
+    (a :: rest).foldRight(Option(0))(
+      {
+        case (t, oacc) => for (acc <- oacc) yield acc + t._2.map(_.getSize).getOrElse(1).asInstanceOf[Int]
+      }
+    )
+  }
   override def orderedChildren = a._2.toList ++ rest.flatMap(_._2.toList)
 
   override def shape = {
@@ -154,6 +154,13 @@ case class Alt(a : (String, Option[TypeSpec]), rest : List[(String, Option[TypeS
 }
 
 object Util {
+  def prettyShape(shape : Array[Object]): String = {
+    shape.map({
+      case i: Integer => i.toString
+      case s: Array[Object] => prettyShape(s)
+    }).mkString("{", ", ", "}")
+  }
+
   def isStar(shape : Array[Object]): Boolean = {
     shape(0).isInstanceOf[Integer] && shape(0).asInstanceOf[Integer] == 0
   }
@@ -209,10 +216,11 @@ object Util {
       shape.length - 1
     } else if (isRep(shape)) {
       nchildren(shape(1).asInstanceOf[Array[Object]]) + 1
+    } else if (isStar(shape)) {
+      nchildren(shape(1).asInstanceOf[Array[Object]]) + 1
     } else {
-      assert(isStar(shape))
+      assert(isSimpleAlternative(shape))
       0
-
     }
 
   }
