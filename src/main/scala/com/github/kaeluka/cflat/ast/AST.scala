@@ -1,13 +1,17 @@
 package com.github.kaeluka.cflat.ast
 
+import com.github.kaeluka.cflat.traversal.{GenericShape}
+
 import scala.collection.mutable.ArrayBuffer
 
 sealed trait TypeSpec {
   def getSize : Option[Int] = {
-    println(s"shape(${this}) = ${this.shape().toList}")
-    val sz = Util.shapeSize(this.shape())
-    println(s"shapeSize(${this}) = ${sz}")
-    sz
+    val sz = GenericShape.shapeSize(this.shape())
+    if (sz<0) {
+      None
+    } else {
+      Option(sz)
+    }
   }
 
   def orderedChildren : List[TypeSpec]
@@ -56,10 +60,10 @@ case class Rep(n : Int, loop : Either[String, TypeSpec], after : Either[String, 
       case Right(subexpr) => subexpr.shape()
     }
     val ret = Array[Object](new Integer(n), loopShape, afterShape)
-    assert(!Util.isSimpleAlternative(ret))
-    assert(Util.isRep(ret))
-    assert(!Util.isAlt(ret))
-    assert(!Util.isStar(ret))
+    assert(!GenericShape.isSimpleAlternative(ret))
+    assert(GenericShape.isRep(ret))
+    assert(!GenericShape.isAlt(ret))
+    assert(!GenericShape.isStar(ret))
     ret
   }
 
@@ -90,12 +94,12 @@ case class Star(loop : Either[String, TypeSpec], after : Either[String, TypeSpec
       case Left(_) => new Integer(1)
       case Right(subexpr) => subexpr.shape()
     }
-    val ret = Array[Object](new Integer(0), loopShape, afterShape)
+    val ret = GenericShape.mkStar(loopShape, afterShape)
 
-    assert(!Util.isSimpleAlternative(ret))
-    assert(!Util.isRep(ret))
-    assert(!Util.isAlt(ret))
-    assert(Util.isStar(ret))
+    assert(!GenericShape.isSimpleAlternative(ret))
+    assert(!GenericShape.isRep(ret))
+    assert(!GenericShape.isAlt(ret))
+    assert(GenericShape.isStar(ret))
     ret
   }
 
@@ -135,10 +139,10 @@ case class Alt(a : (String, Option[TypeSpec]), rest : List[(String, Option[TypeS
         .map(_.map(_.shape()))
         .map(_.getOrElse(null)))
       .toArray.asInstanceOf[Array[Object]]
-    assert(!Util.isSimpleAlternative(ret))
-    assert(!Util.isRep(ret))
-    assert(Util.isAlt(ret))
-    assert(!Util.isStar(ret))
+    assert(!GenericShape.isSimpleAlternative(ret))
+    assert(!GenericShape.isRep(ret))
+    assert(GenericShape.isAlt(ret))
+    assert(!GenericShape.isStar(ret))
     ret
   }
 
@@ -153,75 +157,4 @@ case class Alt(a : (String, Option[TypeSpec]), rest : List[(String, Option[TypeS
   }
 }
 
-object Util {
-  def prettyShape(shape : Array[Object]): String = {
-    shape.map({
-      case i: Integer => i.toString
-      case s: Array[Object] => prettyShape(s)
-    }).mkString("{", ", ", "}")
-  }
 
-  def isStar(shape : Array[Object]): Boolean = {
-    shape(0).isInstanceOf[Integer] && shape(0).asInstanceOf[Integer] == 0
-  }
-
-  def isAlt(shape : Array[Object]): Boolean = {
-    shape(0).isInstanceOf[Integer] && shape(0).asInstanceOf[Integer] == -1
-  }
-
-  def isRep(shape : Array[Object]): Boolean = {
-    shape(0).isInstanceOf[Integer] && shape(0).asInstanceOf[Integer] > 0 && shape.length > 1
-  }
-
-  def isSimpleAlternative(shape : Array[Object]): Boolean = {
-    shape == null
-  }
-
-  def shapeSize(shape : Array[Object]): Option[Int] = {
-    if (isSimpleAlternative(shape)) {
-      Option(1)
-    } else {
-      shape(0) match {
-        case first: Integer =>
-          if (isStar(shape)) {
-            None
-          } else {
-            println(shape(0))
-            if (isAlt(shape)) {
-              Option(shape.drop(1)
-                .map(_.asInstanceOf[Array[Object]])
-                .map(Util.shapeSize(_).get)
-                .sum)
-            } else {
-              assert(isRep(shape))
-              Option(first * shape.drop(1)
-                .map(_.asInstanceOf[Array[Object]])
-                .map(Util.shapeSize(_).get)
-                .sum)
-            }
-          }
-        case _ =>
-          assert(shape(0).isInstanceOf[Array[Object]])
-          Option(shape.map(_.asInstanceOf[Array[Object]])
-            .map(Util.shapeSize(_).get)
-            .sum)
-      }
-    }
-  }
-
-  def nchildren(shape : Array[Object]): Int = {
-    if (isSimpleAlternative(shape)) {
-      1
-    } else if (isAlt(shape)) {
-      shape.length - 1
-    } else if (isRep(shape)) {
-      nchildren(shape(1).asInstanceOf[Array[Object]]) + 1
-    } else if (isStar(shape)) {
-      nchildren(shape(1).asInstanceOf[Array[Object]]) + 1
-    } else {
-      assert(isSimpleAlternative(shape))
-      0
-    }
-
-  }
-}

@@ -1,6 +1,7 @@
 package com.github.kaeluka.cflat.test.ast
 
 import com.github.kaeluka.cflat.ast.{Alt, Rep, Star, TypeSpec}
+import com.github.kaeluka.cflat.traversal.GenericShape
 import org.junit.Test
 import org.junit.Assert
 import org.hamcrest.MatcherAssert._
@@ -19,13 +20,14 @@ class TypeSpecTest {
 
   @Test
   def shape(): Unit = {
-    assertThat(ten_times_eps.shape()(0).asInstanceOf[Integer], org.hamcrest.Matchers.is(10.asInstanceOf[Integer]))
-    assertThat(ten_times_eps.shape()(1).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
-    assertThat(ten_times_eps.shape()(2).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
+    assert(GenericShape.isRep(ten_times_eps.shape()))
+    assertThat(GenericShape.getRepN(ten_times_eps.shape()).asInstanceOf[Integer], is(10.asInstanceOf[Integer]))
+    assertThat(ten_times_eps.shape()(1).asInstanceOf[Integer], is(1.asInstanceOf[Integer]))
+    assertThat(ten_times_eps.shape()(2).asInstanceOf[Integer], is(1.asInstanceOf[Integer]))
 
-    assertThat(star_next_ok.shape()(0).asInstanceOf[Integer], org.hamcrest.Matchers.is(0.asInstanceOf[Integer]))
-    assertThat(star_next_ok.shape()(1).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
-    assertThat(star_next_ok.shape()(2).asInstanceOf[Integer], org.hamcrest.Matchers.is(1.asInstanceOf[Integer]))
+    assert(GenericShape.isStar(star_next_ok.shape()))
+    assertThat(star_next_ok.shape()(1).asInstanceOf[Integer], is(1.asInstanceOf[Integer]))
+    assertThat(star_next_ok.shape()(2).asInstanceOf[Integer], is(1.asInstanceOf[Integer]))
   }
 
 //  @Test

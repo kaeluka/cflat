@@ -2,14 +2,15 @@ package com.github.kaeluka.cflat.storage;
 
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
-import java.util.stream.Stream;
 
-public interface Iteration extends Spliterators.AbstractSpliterator.OfLong {
-    public static <T> Spliterator.OfLong any(final long start, final Object[] shape, Storage<T> s) {
+public interface Iteration extends Spliterators.AbstractSpliterator.OfInt {
+    public static <T> Spliterator.OfInt any(final int  start, final Object[] shape, Storage<T> s) {
         if (start == 0) {
-            return LongStream.range(0, s.estimateSize()).spliterator();
+            return IntStream.range(0, s.sizeOverApproximation()).spliterator();
         } else {
             return new TreeIndexSpliterator(start, 2 /*FIXME*/);
         }
@@ -18,16 +19,16 @@ public interface Iteration extends Spliterators.AbstractSpliterator.OfLong {
 
 class TreeIndexSpliterator implements Iteration {
 
-    private long layerStart;
-    private long layerSize;
-    private long cursor;
+    private int layerStart;
+    private int  layerSize;
+    private int  cursor;
     private final int branchingFactor;
 
-    TreeIndexSpliterator(final long layerStart, final int branchingFactor) {
+    TreeIndexSpliterator(final int layerStart, final int branchingFactor) {
         this(layerStart, 1, branchingFactor);
     }
 
-    TreeIndexSpliterator(final long layerStart, final long layerSize, final int branchingFactor) {
+    TreeIndexSpliterator(final int layerStart, final int  layerSize, final int branchingFactor) {
         assert(layerStart >= 0);
         assert(layerSize > 0);
         this.layerStart = layerStart;
@@ -37,7 +38,7 @@ class TreeIndexSpliterator implements Iteration {
     }
 
     @Override
-    public OfLong trySplit() {
+    public OfInt trySplit() {
         if (cursor == 0) {
             layerStart = layerStart*branchingFactor + 1;
             return new TreeIndexSpliterator(
@@ -45,7 +46,7 @@ class TreeIndexSpliterator implements Iteration {
                     branchingFactor - 1,
                     branchingFactor);
         }
-        final long leftSize = layerSize / 2;
+        final int  leftSize = layerSize / 2;
         layerSize = layerSize - leftSize;
         final TreeIndexSpliterator ret = new TreeIndexSpliterator(
                 layerStart,
@@ -57,7 +58,7 @@ class TreeIndexSpliterator implements Iteration {
 
     @Override
     public long estimateSize() {
-        return Long.MAX_VALUE;
+        return Integer.MAX_VALUE;
     }
 
     @Override
@@ -74,7 +75,7 @@ class TreeIndexSpliterator implements Iteration {
     }
 
     @Override
-    public boolean tryAdvance(final LongConsumer action) {
+    public boolean tryAdvance(final IntConsumer action) {
         action.accept(cursor);
         cursor++;
         if (cursor >= layerStart+layerSize) {

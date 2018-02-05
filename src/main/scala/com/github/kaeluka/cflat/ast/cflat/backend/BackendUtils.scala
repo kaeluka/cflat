@@ -165,28 +165,6 @@ object BackendUtils {
     }) ++ long.drop(short.size)
   }
 
-  def cantorPairingFunction(k1: Long, k2: Long): Long = {
-    val ret = (k1 + k2)*(k1 + k2 + 1)/2+k2
-    ret
-  }
-
-  def cantorPairingFunctionRev(z: Long): (Long, Long) = {
-    val w = Math.floor((Math.sqrt(8*z + 1) - 1)/2).asInstanceOf[Long]
-    val t = (w*w + w)/2
-    val y = z - t
-    val x = w - y
-    (x, y)
-  }
-
-  def test(): Unit = {
-    def testPairingFunction(f: (Long, Long) => Long, frev: Long => (Long, Long)) = {
-      for (i <- 0 to 100; j <- 0 to 100) {
-        assert(frev(f(i, j)) == (i, j))
-      }
-    }
-    testPairingFunction(cantorPairingFunction, cantorPairingFunctionRev)
-  }
-  test()
 }
 
 object BytecodeResult {

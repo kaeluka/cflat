@@ -135,6 +135,6 @@ class CompileTest {
 
     //l_back and r_back are equivalent:
     assertThat(BackendUtils.getPath(mkInstance(smallTreeClass), "ok"),
-      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "l.r.l.r.l.r.l_back.l_back.l_back.l_back.l_back.l_back.ok")))
+      equalTo(BackendUtils.getPath(mkInstance(smallTreeClass), "l.r.l.r.l.r.r_back.l_back.l_back.l_back.r_back.l_back.ok")))
   }
 }
