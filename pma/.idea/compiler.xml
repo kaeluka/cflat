@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile default="true" name="Default" enabled="true">
+        <processor name="org.checkerframework.checker.nullness.nullnessChecker" />
+        <processorPath useClasspath="false">
+          <entry name="$USER_HOME$/IdeaProjects/hello/lib/checker-1.9.10.jar" />
+        </processorPath>
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel target="1.8" />
+  </component>
+</project>
