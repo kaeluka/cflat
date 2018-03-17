@@ -19,8 +19,8 @@ public class ReverseStorage<T> extends StorageWrapper<T> {
         final int innerIdx = switchIdx(i);
         if (innerIdx < 0) {
             int moveTo = -innerIdx;
-            this.locationOfZero += moveTo;
-            innerStorage.moveRange(0, moveTo, innerStorage.sizeOverApproximation());
+            locationOfZero += moveTo;
+            innerStorage.moveRange(0, moveTo, innerStorage.maxIdxOverapproximation());
         }
     }
 
@@ -29,7 +29,7 @@ public class ReverseStorage<T> extends StorageWrapper<T> {
         if (possiblyNewInnerStorage == innerStorage) {
             return this;
         } else {
-            return new ReverseStorage<>(innerStorage);
+            return new ReverseStorage<>(possiblyNewInnerStorage);
         }
     }
 
@@ -89,7 +89,7 @@ public class ReverseStorage<T> extends StorageWrapper<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return this.locationOfZero + 1;
     }
 
@@ -170,9 +170,9 @@ public class ReverseStorage<T> extends StorageWrapper<T> {
 //    public Storage<T> addAll(final Storage<T> source)
 
     @Override
-    public int find(final T x, final int max) {
+    public int findFirst(final T x, final int max) {
         assert max == -1;
-        final int idx = innerStorage.find(x, max);
+        final int idx = innerStorage.findFirst(x, max);
         if (idx == -1) {
             return -1;
         } else {

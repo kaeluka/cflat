@@ -13,7 +13,7 @@ class BackendUtilsTest {
   def ten_times_eps = Rep(10, Left("col"), Left("ok"))
 
   def assertSize(term : TypeSpec, n : Option[Int]) = {
-    Assert.assertEquals(s"type spec $term must have size $n", n, term.getSize)
+    Assert.assertEquals(s"type spec $term must have stepSize $n", n, term.getSize)
   }
 
 }

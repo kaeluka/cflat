@@ -92,6 +92,7 @@ public class ChunkedStorage<T> implements Storage<T> {
     @Override
     public Storage<T> set(final int i, final T x) {
         checkIndexIsNonnegative(i);
+        if (x == null && !has(i)) { return this; }
         maxIdx = i > maxIdx ? i : maxIdx;
         this.getEnsureChunk(i)[idxWithinChunk(i)] = x;
         return this;
@@ -101,7 +102,7 @@ public class ChunkedStorage<T> implements Storage<T> {
     public Storage<T> set2(final int i, final T x, final T y) {
         checkIndexIsNonnegative(i);
         checkIndexIsNonnegative(i+1);
-        maxIdx = i > maxIdx ? i : maxIdx;
+        maxIdx = i+1 > maxIdx ? i+1 : maxIdx;
         final int idxWithin = idxWithinChunk(i);
         final Object[] chunk = this.getEnsureChunk(i);
         chunk[idxWithin] = x;
@@ -121,13 +122,71 @@ public class ChunkedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
     @Override
     public Storage<T> copy() {
         return new ChunkedStorage<>(Arrays.copyOf(chunks, chunks.length));
+    }
+
+    @Override
+    public int findFirst(final T x, final int max) {
+        assert max == -1;
+        for (int i = 0; i < chunks.length; i++) {
+            final Object[] chunk = chunks[i];
+            if (chunk != null) {
+                for (int j = 0; j < chunk.length; j++) {
+                    if (chunk[j] != null && chunk[j].equals(x)) {
+                        return chunk.length *i+j;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    @Override
+    public Storage<T> copyRange(final int source, final int dest, final int length) {
+
+        final int sourceChunkIdx = idxOfChunk(source);
+        final int destChunkIdx   = idxOfChunk(dest);
+
+        if (sourceChunkIdx == idxOfChunk(source+length-1)
+                && destChunkIdx == idxOfChunk(dest+length-1)) {
+            if ((sourceChunkIdx >= chunks.length || chunks[sourceChunkIdx] == null)
+                    && (destChunkIdx >= chunks.length || chunks[destChunkIdx] == null)) {
+                return this;
+            }
+            final Object[] sourceChunk = this.getChunk(source);
+            final Object[] destChunk   = this.getChunk(dest);
+            if (sourceChunk != null && destChunk != null) {
+                System.arraycopy(
+                        sourceChunk, idxWithinChunk(source),
+                        destChunk, idxWithinChunk(dest),
+                        length);
+            } else {
+                if (sourceChunk == null && destChunk != null) {
+                    Arrays.fill(destChunk,
+                            idxWithinChunk(dest),
+                            idxWithinChunk(dest+length),
+                            null);
+                    return this;
+                } else if (sourceChunk != null && destChunk == null) {
+                    final Object[] newDestChunk = getEnsureChunk(dest);
+                    System.arraycopy(
+                        sourceChunk, idxWithinChunk(source),
+                        newDestChunk, idxWithinChunk(dest),
+                        length);
+                    return this;
+                }
+                throw new AssertionError();
+            }
+            return this;
+        } else {
+            return Storage.super.copyRange(source, dest, length);
+        }
     }
 
     @Override

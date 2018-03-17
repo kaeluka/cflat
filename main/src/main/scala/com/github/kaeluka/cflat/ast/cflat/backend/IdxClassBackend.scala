@@ -18,7 +18,7 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
     t match {
       case Rep(n, ethrLoop, ethrAfter) => {
         /*
-        { loop } -------+--exitName--> { after }
+        { loop } -------+--> { after }
          ^            |
          |            |
          +--loopName--+
@@ -28,20 +28,39 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
           case Left(_) => n
         }
         val loopName: String = ethrLoop.left.toOption.getOrElse(s"loop_${t.toString.hashCode.toString.replace("-", "m")}")
+        val loopSize = ethrLoop match {
+          case Left(_) => 1
+          case Right(l) => {
+            assert(l.getSize.isDefined, "inner-expression must be finite")
+            l.getSize.get
+          }
+        }
+
+        val afterSize = ethrAfter match {
+          case Left(_) => 1
+          case Right(a) => {
+            assert(a.getSize.isDefined, "after-expression must be finite")
+            a.getSize.get
+          }
+        }
         val cPrime = c
-          .pushIndex(loopName, Option(n))
+          .pushStride(loopName, Option(afterSize))
           .mapResToExtend(_
             .withIndexField(loopName))
 
+
         val cPrimePrime = ethrLoop match {
           case Right(loop) => {
-            this.compile(cPrime.pushRecursion(loopName, loop.getSize, name), loop)
+            this.compile(cPrime.pushRecursion(loopName, Some(loopSize), name), loop)
           }
           case Left(_) =>
-            cPrime.mapResToExtend(_.withMutableRecStep(cPrime, loopName, Some(n)))
+            cPrime
+              .mapResToExtend(_.withMutableRecStep(cPrime, loopName, Some(n)))
+//              .pushStride(loopName, Option(afterSize*loopSize))
         }
         ethrAfter match {
           case Right(after) => {
+            // here
             val afterComp = compile(
               cPrimePrime,
               after)
@@ -91,9 +110,18 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
   }
 
   override def postCompile(ctx: IdxClassBackendCtx): IdxClassBackendCtx = {
+    val coordinates = ctx.recursionStack ++ ctx.indexStack.map { case (a, b) => (a, b, ctx.resToExtend.mainKlass._1)}
+//    assert(false, s"coordinates=${coordinates}")
+    println(s"coordinates=$coordinates")
     val withCtor = ctx.mapResToExtend(res => {
-      res
-        .withStepConstructor(List())
+      if (coordinates.isEmpty) {
+        res
+          .withStepConstructor(List())
+      } else {
+        res
+          .withStepConstructor(List())
+          .withStepConstructor(coordinates)
+      }
     }).withCopyMethod()
     ctx.doKlassDump.foreach(withCtor.resToExtend.writeTo(_, ctx.packge))
     withCtor
@@ -104,13 +132,13 @@ class IdxClassBackend extends Backend[IdxClassBackendCtx] {
     toModify.defineField(s"idx_${index._1}", classOf[Int], Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL)
   }
 
-//  def addIndexFields(toModify : DynamicType.Builder[Object], indexStack : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
-//        //println(s"adding coordinate fields ${indexStack.mkString("[", ", ", "]")}")
-//    indexStack.foldRight(toModify)({case (f, acc) => addIndexField(acc, f)})
+//  def addIndexFields(toModify : DynamicType.Builder[Object], coordinates : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
+//        //println(s"adding coordinate fields ${coordinates.mkString("[", ", ", "]")}")
+//    coordinates.foldRight(toModify)({case (f, acc) => addIndexField(acc, f)})
 //  }
 
 //  def addRecursionMethods(toModify : (String, DynamicType.Builder[Object]))(implicit ctx : IdxClassBackendCtx) : (String, DynamicType.Builder[Object]) = {
-//    ctx.indexStack.foldRight(toModify)({case ((name, osz, kl), acc) => {
+//    ctx.coordinates.foldRight(toModify)({case ((name, osz, kl), acc) => {
 //      println(s"==> public $kl ${toModify._1}::rec_$name() | recursion method")
 //      (acc._1, acc._2
 //        .defineMethod(s"rec_$name", BackendUtils.getTypeDesc(ctx.packge, kl), Opcodes.ACC_PUBLIC)

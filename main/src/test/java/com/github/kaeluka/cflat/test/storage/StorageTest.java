@@ -2,9 +2,9 @@ package com.github.kaeluka.cflat.test.storage;
 
 import com.github.kaeluka.cflat.storage.Storage;
 import com.github.kaeluka.cflat.traversal.GenericShape;
-import com.github.kaeluka.cflat.util.IndexCheck;
 import com.github.kaeluka.cflat.util.Mutable;
 import com.github.kaeluka.cflat.util.Storages;
+import gnu.trove.set.hash.TIntHashSet;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -64,16 +64,69 @@ public class StorageTest extends junit.framework.TestCase {
     }
 
     @Test
+    public void emptyCopyTest() {
+        Storage<Integer> st1 = mkStorage();
+        final int N = 100;
+        for (int i = 0; i < N; i++) {
+            st1 = st1.set(i, i);
+        }
+
+        Storage<Integer> st2 = st1.emptyCopy();
+        for (int i = 0; i < N; i++) {
+            assertThat(st1.get(i), is(i));
+            assertThat(st2.get(i), nullValue());
+        }
+    }
+
+    @Test
+    public void foreachNonNullTest() {
+        Storage<Integer> st = mkStorage();
+        final int N = 10;
+        final Random random1 = new Random(12345L);
+        final TIntHashSet keys = new TIntHashSet();
+
+        for (int i = 0; i< N; ++i) {
+            final int key = random1.nextInt(N);
+            System.out.println("storing " + key);
+            keys.add(key);
+            st = st.set(key, key);
+        }
+
+        Mutable<Integer> cnt = new Mutable<>(0);
+
+        final Random random2 = new Random(12345L);
+        st.foreachNonNull(i -> {
+            cnt.x++;
+            final int key = random2.nextInt(N);
+            System.out.println("reading "+key);
+            assertThat("key="+key, keys.contains(key));
+        });
+        assertThat("total number of indices is correct", cnt.x, is(keys.size()));
+    }
+
+    @Test
     public void setRangeTest() {
         Storage<Integer> st = mkStorage();
         assert st != null;
-        st = st.setRange(100, 123, 10);
-        for (int i = 0; i < 500; i++) {
-            if (i<100 || i >= 110) {
-                assert(!st.has(i));
+        st = st.setRange(254, 123, 10);
+        for (int i = 0; i < 20000; i++) {
+            if (i<254 || i >= 264) {
+                assertThat("i="+i, !st.has(i));
             } else {
                 assert(st.has(i));
                 assertThat("at index "+i, st.get(i), is(123));
+            }
+        }
+
+        st = st.setRange(257, null, 3);
+        for (int i = 0; i < 20000; i++) {
+            if (i >= 257 && i < 260) {
+                assertThat("i="+i, !st.has(i));
+            } else if (i<254 || i >= 264) {
+                assertThat("i="+i, !st.has(i));
+            } else {
+                assertThat("i="+i, st.has(i));
+                assertThat("i="+i, st.get(i), is(123));
             }
         }
     }
@@ -91,23 +144,29 @@ public class StorageTest extends junit.framework.TestCase {
         for (int i=0; i<N; ++i) {
             final int r = random.nextInt(1000);
             st = st.set(r, r);
+            for (int j=0; j<i; ++j) {
+                Random tmprandom = new Random(12345);
+                final int s = tmprandom.nextInt(1000);
+                assertThat("i="+i+", j="+j, st.has(s));
+                assertThat("i="+i+", j="+j, st.get(s), is(s));
+            }
         }
         random = new Random(12345);
         for (int i=0; i<N; ++i) {
             final int r = random.nextInt(1000);
-            assert(st.has(r));
-            assertThat(st.get(r), is(r));
+            assertThat("i="+i+": r="+r, st.has(r));
+            assertThat("i="+i+": r="+r, st.get(r), is(r));
         }
 
-        random = new Random(12345678L);
-        for (int i=0; i<N/2; ++i) {
-            random.nextInt(1000);
-            st = st.set(i, null);
-        }
-        random = new Random(12345678L);
+        random = new Random(12345L);
         for (int i=0; i<N/2; ++i) {
             final int r = random.nextInt(1000);
-            assert(!st.has(r));
+            st = st.set(r, null);
+        }
+        random = new Random(12345L);
+        for (int i=0; i<N/2; ++i) {
+            final int r = random.nextInt(1000);
+            assertThat("#"+i+": r="+r, !st.has(r));
             assertThat(st.get(r), nullValue());
         }
     }
@@ -175,11 +234,11 @@ public class StorageTest extends junit.framework.TestCase {
         }
 
         for (int i = 0; i < 10; i++) {
-            assertThat(st.find(i, -1), is(i));
+            assertThat("i="+i, st.findFirst(i, -1), is(i));
         }
 
         for (int i = 0; i < 10; i++) {
-            assertThat(st.find(10+i, -1), is(-1));
+            assertThat(st.findFirst(10+i, -1), is(-1));
         }
     }
 
@@ -255,7 +314,9 @@ public class StorageTest extends junit.framework.TestCase {
             assertThat(st.get(i), is(i));
         }
 
+        System.out.println(st);
         st = st.moveRange(N / 2, (N/2) + 2, 5);
+        System.out.println(st);
 
         for (int i = 0; i < N / 2; i++) {
             assertThat("st.get("+i+") = "+i, st.get(i), is(i));
@@ -320,7 +381,7 @@ public class StorageTest extends junit.framework.TestCase {
         for (int i = 0; i<limit; ++i) { // fill the first N layers
             st = st.set(i, i);
         }
-        assertThat(st.sizeOverApproximation(), is(limit));
+        assertThat(st.maxIdxOverapproximation(), is(limit));
 //        st = st.set(limit + 5, limit + 5);
         for (int i = 0; i<limit; ++i) {
             assertTrue(st.has(i));
@@ -374,16 +435,17 @@ public class StorageTest extends junit.framework.TestCase {
             if (max < idx) {
                 max = idx;
             }
+
             st = st.set(idx, i);
-            assertThat("at i="+i+", max="+max+", idx="+idx, st.sizeOverApproximation(), is(max+1));
-            assertThat("at i="+i+", max="+max+", idx="+idx, st.sizePrecise(), is(max+1));
+            assertThat("at i="+i+", max="+max+", idx="+idx, st.maxIdxOverapproximation(), is(max+1));
+            assertThat("at i="+i+", max="+max+", idx="+idx, st.maxIdx(), is(max+1));
         }
     }
 
     @Test
     public void moveRangeTest() {
         Storage<Integer> st = mkStorage();
-        final int N = 1000;
+        final int N = 500;
         for (int i = 0; i < N; i++) {
             st = st.moveRange(0, 1, i);
             assertThat("at index "+i, st.get(0), nullValue());
@@ -430,7 +492,9 @@ public class StorageTest extends junit.framework.TestCase {
                 default: assertTrue(!st.has(i));
             }
         }
+        System.out.println(st);
         st = st.moveSubtree(3, GenericShape.mkStar(2,1), 1);
+        System.out.println(st);
 
         for (int i=0; i<100; ++i) {
             switch (i) {
@@ -458,14 +522,15 @@ public class StorageTest extends junit.framework.TestCase {
          */
         Storage<Integer> st = mkStorage();
         assert(st != null);
-        System.out.println(st);
         st = st.set(0, 0);
         st = st.set(1, 1);
         st = st.set(3, 2);
         st = st.set(7, 3);
         st = st.set(8, 4);
 
+        System.out.println(st);
         st = st.moveSubtree(1, GenericShape.mkStar(2,1), 2);
+        System.out.println(st);
         final Storage<Integer> thSt = st;
         st.foreachNonNull(i -> System.out.println(i+" -> "+thSt.get(i)));
 
@@ -482,25 +547,23 @@ public class StorageTest extends junit.framework.TestCase {
     }
 
     @Test
+    public void set2Size() {
+        Storage<Integer> st = mkStorage();
+        st = st.set2(10, 1, 2);
+        assertThat(st.maxIdxOverapproximation(), greaterThanOrEqualTo(12));
+        assertThat(st.maxIdx(), is(12));
+    }
+
+    @Test
     public void moveStorageSize() {
         final int SIZE = 5000;
         Storage<Integer> st = mkStorage();
         assert(st != null);
         for (int i = 0; i < SIZE; i++) {
             st = st.set(i*2, i);
-            assertThat(st.sizeOverApproximation(), greaterThanOrEqualTo(i));
-            assertThat(st.sizePrecise(), is(i*2+1));
+            assertThat(st.maxIdxOverapproximation(), greaterThanOrEqualTo(i));
+            assertThat(st.maxIdx(), is(i*2+1));
         }
-
-        //FIXME: bug! the collections don't update maxIdx after moves
-//        final int MOVES = 10;
-//        for (int i = 0; i < MOVES; i++) {
-//
-//            st = st.moveSubtree(0, GenericShape.mkStar(1,1), 1);
-//            assertThat(st.sizePrecise(), is((SIZE-1)*2+1+i));
-//            System.out.println("move " + i + " ok (size was "+st.sizePrecise()+")");
-//
-//        }
     }
 
     @Test
@@ -542,6 +605,37 @@ public class StorageTest extends junit.framework.TestCase {
                 default: assertTrue(!st.has(i));
             }
         }
+    }
+
+    @Test
+    public void joinInnerTest() {
+        Storage<Integer> st1 = this.mkStorage();
+        Storage<Integer> st2 = this.mkStorage();
+
+        for (int i = 0; i < 1000; i++) {
+            st1 = st1.set(2*i, 2*i);
+            st2 = st2.set(3*i, 3*i);
+        }
+
+        ArrayList<Integer> res = new ArrayList<>();
+        int expectedLength = 0;
+        for (int i = 0; i < 3000; i++) {
+            if (st1.has(i) && st2.has(i)) {
+                expectedLength++;
+            }
+        }
+
+
+        st1.joinInner(st2,
+                (v1, v2) -> res.add(v1*v2));
+
+        assertThat(res, hasSize(expectedLength));
+
+        for (final Integer v : res) {
+            assert v % 2 == 0;
+            assert v % 3 == 0;
+        }
+
     }
 
     @Test

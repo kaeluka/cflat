@@ -82,7 +82,7 @@ public final class IntArrayStorage implements Storage<Integer> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
@@ -91,7 +91,7 @@ public final class IntArrayStorage implements Storage<Integer> {
                               final Object[] shape,
                               final int dest) {
         if ((GenericShape.isRep(shape) || GenericShape.isStar(shape)) && (GenericShape.shapeSize((Object[]) shape[1]) == 1) && (GenericShape.shapeSize((Object[]) shape[2]) == 1)) {
-            final int sE = sizeOverApproximation();
+            final int sE = maxIdxOverapproximation();
             int valsToCopy = sE - source;
             this.ensureSize(dest+valsToCopy);
             System.arraycopy(this.data, source, this.data, dest, valsToCopy);

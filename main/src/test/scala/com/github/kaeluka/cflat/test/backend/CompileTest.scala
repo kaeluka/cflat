@@ -4,7 +4,7 @@ import java.io.FileWriter
 import java.util
 
 import com.github.kaeluka.cflat.ast.cflat.backend._
-import com.github.kaeluka.cflat.ast.{Alt, Rep, TypeSpec}
+import com.github.kaeluka.cflat.ast.{Alt, Rep, Star, TypeSpec}
 import org.apache.commons.io.output.WriterOutputStream
 import org.hamcrest.MatcherAssert._
 import org.hamcrest.Matchers._
@@ -21,6 +21,7 @@ class CompileTest {
   lazy val matr300x300Class  = compileSpec("M300x300", Rep(300, Left("right"), Right(Rep(300, Left("down"), Left("ok")))))
   lazy val boolClass  = compileSpec("BOOL", Alt(("FALSE", None), ("TRUE", None)))
   lazy val smallTreeClass  = compileSpec("SMALLTREE", Rep(8, Right(Alt(("l", None), ("r", None))), Left("ok")))
+  lazy val tupleListClass  = compileSpec("TUPLELIST", Star(Left("tuple"), Right(Alt(("k", None), ("v", None)))))
 
   def compileSpec(name : String, t : TypeSpec) : Class[_] = {
     val namePrime: String = name //s"${name}${backend.getClass.getSimpleName.toUpperCase}"
@@ -76,14 +77,24 @@ class CompileTest {
     BackendUtils.getPath(shortListInstance, "next.next.next.ok", print = true)
   }
 
-//  @Test(expected = classOf[NullPointerException])
-//  def testShortListLongAccGivesNullPointer() {
-//    val shortListInstance = mkInstance(shortListClass)
-//    BackendUtils.getPath(shortListInstance, "next.next.next.next.ok", print = true)
-//  }
+  @Test
+  def tupleList() {
+    for (t <- 0 until 30) {
+      val path = Stream.continually("tuple").take(t)
+      val pathk = (path++List("k")).mkString(".")
+      val pathv = (path++List("v")).mkString(".")
+      println(pathk)
+      assertThat(s"$pathk should evaluate to ${t*2}",
+        BackendUtils.getPath(mkInstance(tupleListClass), pathk, print = true), equalTo(t*2))
+      assertThat(s"$pathv should evaluate to ${t*2+1}",
+        BackendUtils.getPath(mkInstance(tupleListClass), pathv, print = true), equalTo(t*2+1))
+      println("=====")
+    }
+  }
 
   @Test
   def nestedRep() = {
+
     for (r <- 0 until 3; d <- 0 until 3) {
       val matr3x3Instance = mkInstance(matr3x3Class)
       val rights = Stream.continually("right").take(r)

@@ -53,7 +53,7 @@ public class IndexedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int find(final T x, final int max) {
+    public int findFirst(final T x, final int max) {
         final ArrayList<Integer> positions = dataReverse.get(x);
         if (positions != null && !positions.isEmpty()) {
             return positions.get(0);
@@ -69,12 +69,12 @@ public class IndexedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
     @Override
-    public int sizePrecise() {
+    public int maxIdx() {
         int max = -1;
         for (int idx : data.keys()) {
             if (idx > max) {

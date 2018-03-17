@@ -1,5 +1,6 @@
 package com.github.kaeluka.cflat.storage;
 
+import com.github.kaeluka.cflat.storage.size.ObjectSizes;
 import io.usethesource.capsule.Map;
 
 import static com.github.kaeluka.cflat.util.IndexCheck.checkIndexIsNonnegative;
@@ -37,7 +38,7 @@ public final class ImmutableStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
@@ -58,6 +59,8 @@ public final class ImmutableStorage<T> implements Storage<T> {
 
     @Override
     public long bytesUsed() {
+//        ObjectSizes.ARRAY_SIZE()
+        //FIXME implement
         return -1;
     }
 }

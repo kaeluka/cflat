@@ -1,6 +1,9 @@
 package com.github.kaeluka.cflat.storage;
 
+import com.github.kaeluka.cflat.storage.size.ObjectSizes;
+
 import java.util.Arrays;
+import java.util.function.IntConsumer;
 
 import static com.github.kaeluka.cflat.util.IndexCheck.checkIndexIsNonnegative;
 
@@ -10,9 +13,44 @@ public class ShallowTrieStorage<T> implements Storage<T> {
 
     private int maxIdx = -1;
 
+    @Override
+    public int findFirst(final T x, final int max) {
+        assert max == -1;
+        int _max = this.maxIdxOverapproximation();
+        for (int i=0; i<_max; ++i) {
+            int coord1 = getCoord1(i);
+
+            Object[] d1;
+            if ((d1 = data[coord1]) != null) {
+                if (x.equals((T) d1[i & 0xFFFF])) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static int getCoord1(final int i) {
+        return i >> 16 & 0x7FFF;
+    }
+
+    @Override
+    public void foreachNonNull(final IntConsumer f) {
+        for (int c1 = 0; c1 < data.length; c1++) {
+            final Object[] d1 = data[c1];
+            if (d1 != null) {
+                for (int c2 = 0; c2 < d1.length; c2++) {
+                    if (d1[c2] != null) {
+                        f.accept(c2 + c1*0x7FFF);
+                    }
+                }
+            }
+        }
+    }
+
     public T get(final int idx) {
         checkIndexIsNonnegative(idx);
-        int coord1 = idx >> 16 & 0x7FFF;
+        int coord1 = getCoord1(idx);
 
         Object[] d1;
         if ((d1 = data[coord1]) == null) {
@@ -24,12 +62,13 @@ public class ShallowTrieStorage<T> implements Storage<T> {
 
     public Storage<T> set(final int idx, final T x) {
         checkIndexIsNonnegative(idx);
+        if (x == null && !has(idx)) { return this; }
         //FIXME implement set2
         assert idx >= 0;
         if (idx > maxIdx) {
             maxIdx = idx;
         }
-        int coord1 = idx >> 16 & 0x7FFF;
+        int coord1 = getCoord1(idx);
 
         Object[] d1;
         if ((d1 = data[coord1]) == null) {
@@ -44,7 +83,7 @@ public class ShallowTrieStorage<T> implements Storage<T> {
         return this;
     }
 
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
@@ -53,8 +92,14 @@ public class ShallowTrieStorage<T> implements Storage<T> {
 //        return new HashMapStorage<>(new IntHashMap<>());
     }
 
+    @Override
     public long bytesUsed() {
-        System.err.println("returning bogus value for TrieStorage::bytesUsed");
-        return -1;
+        long sz = ObjectSizes.ARRAY_SIZE(data) + ObjectSizes.INT;
+        for (final Object[] lvl1 : data) {
+            if (lvl1 != null) {
+                sz += ObjectSizes.ARRAY_SIZE(lvl1);
+            }
+        }
+        return sz;
     }
 }

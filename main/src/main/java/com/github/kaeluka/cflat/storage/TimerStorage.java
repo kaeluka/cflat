@@ -137,18 +137,18 @@ public class TimerStorage<T> implements StatisticsStorage<T> {
         }
     }
 
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         final long start = System.nanoTime();
-        final int ret = innerStorage.sizeOverApproximation();
+        final int ret = innerStorage.maxIdxOverapproximation();
         final long end = System.nanoTime();
         histograms.get(TIMER_CATEGORY.SIZEOVERAPPROXIMATION).recordValue(end - start);
         totalTime += (end - start);
         return ret;
     }
 
-    public int sizePrecise() {
+    public int maxIdx() {
         final long start = System.nanoTime();
-        final int ret = innerStorage.sizePrecise();
+        final int ret = innerStorage.maxIdx();
         final long end = System.nanoTime();
         histograms.get(TIMER_CATEGORY.SIZEPRECISE).recordValue(end - start);
         totalTime += (end - start);
@@ -305,9 +305,9 @@ public class TimerStorage<T> implements StatisticsStorage<T> {
     }
 
     @SuppressWarnings("unchecked")
-    public int find(final T x, final int max) {
+    public int findFirst(final T x, final int max) {
         final long start = System.nanoTime();
-        final int ret = innerStorage.find(x, max);
+        final int ret = innerStorage.findFirst(x, max);
         final long end = System.nanoTime();
         histograms.get(TIMER_CATEGORY.FIND).recordValue(end - start);
         totalTime += (end - start);

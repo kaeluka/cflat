@@ -64,7 +64,7 @@
 //
 //    @Override
 //    public boolean remove(final Object o) {
-//        int i = this.storage.find((T) o, this.nxt.ok());
+//        int i = this.storage.findFirst((T) o, this.nxt.ok());
 //        if (i >= 0) {
 //            this.remove(i);
 //            return true;
@@ -79,8 +79,8 @@
 //        this.nxt = new SequenceIdx();
 //    }
 //
-//    public int find(T x) {
-//        return this.storage.find(x, -1);
+//    public int findFirst(T x) {
+//        return this.storage.findFirst(x, -1);
 //    }
 //
 //    @Override

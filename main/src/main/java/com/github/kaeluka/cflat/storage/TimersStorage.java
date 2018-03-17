@@ -92,18 +92,18 @@ public class TimersStorage<T> implements StatisticsStorage<T> {
         return this;
     }
 
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         int ret = 0;
         for (final TimerStorage<T> innerStorage : innerStorages) {
-            ret = innerStorage.sizeOverApproximation();
+            ret = innerStorage.maxIdxOverapproximation();
         }
         return ret;
     }
 
-    public int sizePrecise() {
+    public int maxIdx() {
         int ret = 0;
         for (final TimerStorage<T> innerStorage : innerStorages) {
-            ret = innerStorage.sizePrecise();
+            ret = innerStorage.maxIdx();
         }
         return ret;
     }
@@ -205,10 +205,10 @@ public class TimersStorage<T> implements StatisticsStorage<T> {
     }
 
     @SuppressWarnings("unchecked")
-    public int find(final T x, final int max) {
+    public int findFirst(final T x, final int max) {
         int ret = -1;
         for (final TimerStorage<T> innerStorage : innerStorages) {
-            ret = innerStorage.find(x, max);
+            ret = innerStorage.findFirst(x, max);
         }
         return ret;
     }
@@ -300,7 +300,7 @@ public class TimersStorage<T> implements StatisticsStorage<T> {
                     throw new AssertionError(
                             "inner storage of type "+
                                     innerStorage.getInnerClass().getSimpleName()+
-                                    " has negative size");
+                                    " has negative stepSize");
                 }
                 final double bytesScore = bytesUsed *1.0 / minBytes;
                 final double timeScore  = totalTime *1.0 / minTime;

@@ -12,8 +12,5 @@ public class Storage2DTest {
     public void simpleGet() {
         final Storage2D<Integer> st = new Storage2D<>(new ArrayStorage<>(), new ArrayStorage<>());
         assertThat(st.get(0), not(nullValue()));
-        assertThat(st.get(0), instanceOf(ArrayStorage.class));
-
     }
-
 }

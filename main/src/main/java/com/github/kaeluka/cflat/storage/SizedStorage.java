@@ -3,6 +3,7 @@ package com.github.kaeluka.cflat.storage;
 import com.github.kaeluka.cflat.util.Mutable;
 
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public abstract class SizedStorage<T> implements Storage<T> {
     private int maxIdx = -1;
@@ -14,7 +15,7 @@ public abstract class SizedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public Storage<T> computeIfAbsent(final int i, final Function<Integer, T> f, final Mutable<T> result) {
+    public Storage<T> computeIfAbsent(final int i, final IntFunction<T> f, final Mutable<T> result) {
         updateMaxIdx(i);
         return Storage.super.computeIfAbsent(i, f, result);
     }
@@ -38,12 +39,8 @@ public abstract class SizedStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
-    }
-
-    protected int getMaxIdx() {
-        return maxIdx;
     }
 
     protected void updateMaxIdx(final int i) {

@@ -1,8 +1,5 @@
 package com.github.kaeluka.cflat.storage;
 
-import java.util.Iterator;
-import java.util.function.BiConsumer;
-import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 public abstract class StorageWrapper<T> implements Storage<T> {
@@ -41,12 +38,12 @@ public abstract class StorageWrapper<T> implements Storage<T> {
         return withNewIdentity(innerStorage.clearAll());
     }
 
-    public int sizeOverApproximation() {
-        return innerStorage.sizeOverApproximation();
+    public int maxIdxOverapproximation() {
+        return innerStorage.maxIdxOverapproximation();
     }
 
-//    public int sizePrecise() {
-//        return innerStorage.sizePrecise();
+//    public int maxIdx() {
+//        return innerStorage.maxIdx();
 //    }
 
 //    public Storage<T> moveSubtree(final int source, final Object[] shape, final int dest) {
@@ -101,8 +98,8 @@ public abstract class StorageWrapper<T> implements Storage<T> {
         return withNewIdentity(innerStorage.addAll(source));
     }
 
-//    public int find(final T x, final int max) {
-//        return innerStorage.find(x, max);
+//    public int findFirst(final T x, final int max) {
+//        return innerStorage.findFirst(x, max);
 //    }
 
     public Storage<T> copy() {
@@ -113,11 +110,7 @@ public abstract class StorageWrapper<T> implements Storage<T> {
         return withNewIdentity(innerStorage.emptyCopy());
     }
 
-    public long bytesUsed() {
-        return innerStorage.bytesUsed();
-    }
+    public long bytesUsed() { return innerStorage.bytesUsed(); }
 
-    public Class<? extends Storage> getInnerClass() {
-        return innerStorage.getClass();
-    }
+    public Class<? extends Storage> getInnerClass() { return innerStorage.getClass(); }
 }

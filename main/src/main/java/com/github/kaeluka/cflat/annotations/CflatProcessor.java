@@ -19,7 +19,7 @@ import java.util.Set;
 
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("com.github.kaeluka.cflat.annotations.Cflat")
-@SupportedSourceVersion(SourceVersion.RELEASE_7)
+@SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class CflatProcessor extends AbstractProcessor {
     public boolean process(final Set<? extends TypeElement> annotations, final RoundEnvironment roundEnv) {
         for (Element _e : roundEnv.getElementsAnnotatedWith(Cflat.class)) {
@@ -49,7 +49,7 @@ public class CflatProcessor extends AbstractProcessor {
                 System.out.println("creating classfile: " + qualifiedName);
                 JavaFileObject jfo = processingEnv
                         .getFiler()
-                        .createClassFile(qualifiedName);
+                        .createClassFile(qualifiedName, te);
 
                 IdxClassBackend b = new IdxClassBackend();
                 IdxClassBackendCtx ctx = b

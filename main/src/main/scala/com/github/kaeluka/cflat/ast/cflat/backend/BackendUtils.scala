@@ -41,7 +41,7 @@ case class IdxClassBackendCtx(packge: String, wholeSpec: TypeSpec, resToExtend: 
     IdxClassBackendCtx(packge, wholeSpec, resToExtend, (recName, None) :: indexStack, recursionStack, doKlassDump, offset)
   }
 
-  def pushIndex[t](indexName: String, n: Option[Int]): IdxClassBackendCtx = {
+  def pushStride[t](indexName: String, n: Option[Int]): IdxClassBackendCtx = {
     IdxClassBackendCtx(packge, wholeSpec, resToExtend, (indexName, n) :: indexStack, recursionStack, doKlassDump, offset = 0)
   }
 
@@ -174,7 +174,7 @@ object BytecodeResult {
       .subclass(classOf[Object], ConstructorStrategy.Default.NO_CONSTRUCTORS)
       .name(packge+"."+name)
       .modifiers(ModifierContributor.Resolver.of(Visibility.PUBLIC, TypeManifestation.FINAL).resolve())
-      .defineField("stage", classOf[Int], Opcodes.ACC_PUBLIC)
+//      .defineField("stage", classOf[Int], Opcodes.ACC_PUBLIC)
       .defineField("expr", classOf[String], Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)
       .value(x.pretty())
       .defineField("shape", classOf[Array[Object]], Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)
@@ -271,16 +271,21 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
       .intercept(ctorImpl)))
   }
 
-  def withStepConstructor(indexStack: List[(String, Option[Int], String)]): BytecodeResult = {
-    //    println(s"adding ctor for ${mainKlass._1}, ${indexStack.size} args")
+  def withStepConstructor(coordinates: List[(String, Option[Int], String)]): BytecodeResult = {
+    //    println(s"adding ctor for ${mainKlass._1}, ${coordinates.stepSize} args")
     val ctorImpl = ToImpl(new StackManipulation {
-      override def apply(mv: MethodVisitor, implCtx: Context) = {
-        mv.visitLdcInsn("from withStepConstructor")
+      override def apply(mv: MethodVisitor, implCtx: Context): StackManipulation.Size = {
+        mv.visitLdcInsn(s"from withStepConstructor, coordinates=${coordinates}")
         mv.visitInsn(Opcodes.POP)
+        // visit the parameters to generate debug information:
+        for (coord <- coordinates) {
+          //FIXME: the names seem to be ignored
+          mv.visitParameter(coord._1, Opcodes.ACC_FINAL)
+        }
         mv.visitVarInsn(Opcodes.ALOAD, 0)
         mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
         var crash: Option[Label] = None
-        for (idx <- indexStack.zipWithIndex) {
+        for (idx <- coordinates.zipWithIndex) {
           if (idx._1._2.isDefined) {
             if (crash.isEmpty) {
               crash = Option(new Label())
@@ -299,11 +304,11 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
         mv.visitInsn(Opcodes.RETURN)
         crash match {
           case Some(lbl) => {
-            //FIXME start using exception checks again if possible!
+            //FIXME start using bounds checks again if possible!
 //            mv.visitLabel(lbl)
-//            val locals = new Array[Object](1+indexStack.size)
+//            val locals = new Array[Object](1+coordinates.stepSize)
 //            locals(0) = implCtx.getInstrumentedType.getName.replace(".", "/")
-//            for (i <- 1 to indexStack.size) {
+//            for (i <- 1 to coordinates.stepSize) {
 //              locals(i) = Opcodes.INTEGER
 //            }
 //            mv.visitFrame(Opcodes.F_FULL, 2, locals, 0, new Array[Object](0))
@@ -314,12 +319,12 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
           }
           case None => ()
         }
-        new StackManipulation.Size(0, if (indexStack.nonEmpty) { 2 } else { 1 })
+        new StackManipulation.Size(0, if (coordinates.nonEmpty) { 2 } else { 1 })
       }
       override def isValid = true
     })
     val parameters = new java.util.ArrayList[TypeDefinition]()
-    for (idx <- indexStack) {
+    for (idx <- coordinates) {
       parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
     }
 
@@ -333,7 +338,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
   }
 
   def withIndexFields(indexStack: List[(String, Option[Int], String)]): BytecodeResult = {
-    //    println(s"adding coordinate fields ${indexStack.mkString("[", ", ", "]")}")
+    //    println(s"adding coordinate fields ${coordinates.mkString("[", ", ", "]")}")
     indexStack.foldRight(this)({case (f, acc) => acc.withIndexField(f._1)})
   }
 
@@ -348,6 +353,13 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
     BytecodeResult((mainKlass._1, f(mainKlass._2)), privateKlasses.map(fLabelled), endKlasses.map(fLabelled))
   }
 
+  def getSizeOfStep(ctx: IdxClassBackendCtx, name: String): Int = {
+    ctx.recursionStack.find({ case (sname, _, _) => sname.equals(name) }) match {
+      case Some((_, sz, _)) => sz.get
+      case None => 1
+    }
+  }
+
   /**
     * Add a recursive step to a result.
     *
@@ -360,6 +372,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
   def withMutableRecStep(ctx: IdxClassBackendCtx, name: String, max: Option[Int]): BytecodeResult = {
     def addStep(kl: (String, Builder[Object])): Builder[Object] = {
       //      println(s"adding recursive step: ${kl._1} --$name--> ${mainKlass._1}")
+//      val stepSize = getSizeOfStep(ctx, name)
       val random_acc_parameters = new util.ArrayList[TypeDefinition](ctx.indexStack.size)
       random_acc_parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
       kl._2
@@ -391,7 +404,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
 //  def withRecStep(ctx: IdxClassBackendCtx, name: String): BytecodeResult = {
 //    def addStep(kl: (String, Builder[Object])): Builder[Object] = {
 //      println(s"adding recursive step: ${kl._1} --$name--> ${mainKlass._1}")
-//      val random_acc_parameters = new util.ArrayList[TypeDefinition](ctx.indexStack.size)
+//      val random_acc_parameters = new util.ArrayList[TypeDefinition](ctx.coordinates.stepSize)
 //      random_acc_parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
 //      kl._2
 //        .defineMethod(name, BackendUtils.getTypeDesc(ctx.packge, mainKlass._1), Opcodes.ACC_PUBLIC)
@@ -433,7 +446,7 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
   }
 
   def withGetter(ctx: IdxClassBackendCtx, stepName: String): BytecodeResult = {
-    println(s"adding getter $stepName to klass ${ctx.packge+"."+this.mainKlass._1}")
+//    println(s"adding getter $stepName to klass ${ctx.packge+"."+this.mainKlass._1}")
     val withGetter = this.mainKlass._2
       .defineMethod(stepName, classOf[Int], Opcodes.ACC_PUBLIC)
       .intercept(ToImpl(new StackManipulation {
@@ -441,16 +454,18 @@ case class BytecodeResult(mainKlass: (String, DynamicType.Builder[Object]), priv
 
         override def apply(mv: MethodVisitor, implCtx: Context) = {
           val calleeDesc = implCtx.getInstrumentedType.getName.replace(".", "/")//mainKlass._1
-          mv.visitLdcInsn(s"from withGetter (mainKlass=$calleeDesc)")
+          mv.visitLdcInsn(s"from withGetter (mainKlass=$calleeDesc, idxStack=${ctx.indexStack})")
           mv.visitInsn(Opcodes.POP)
           mv.visitInsn(Opcodes.ICONST_0)
           var scale = 1
           for (idx <- ctx.indexStack) {
+            mv.visitLdcInsn(s"index: ${idx._1}, size=${idx._2}")
+            mv.visitInsn(Opcodes.POP)
             mv.visitVarInsn(Opcodes.ALOAD, 0)
             mv.visitFieldInsn(Opcodes.GETFIELD, calleeDesc, s"idx_${idx._1}", "I")
             assert(idx._2.isDefined, "infinite dimension case not yet implemented")
-            mv.visitLdcInsn(scale)
             scale = scale * idx._2.get
+            mv.visitLdcInsn(scale)
             mv.visitInsn(Opcodes.IMUL)
             mv.visitInsn(Opcodes.IADD)
           }
@@ -506,7 +521,7 @@ private case class MutableRandomAccessStep(calleeClassName: String, ctx: IdxClas
         val locals = new Array[Object](2)
         locals(0) = implCtx.getInstrumentedType.getName.replace(".", "/")
         locals(1) = Opcodes.INTEGER
-//        for (i <- 1 to ctx.indexStack.size) {
+//        for (i <- 1 to ctx.coordinates.size) {
 //          locals(i) = Opcodes.INTEGER
 //        }
         mv.visitFrame(Opcodes.F_FULL, 2, locals, 0, new Array[Object](0))
@@ -534,8 +549,8 @@ private case class MutableRandomAccessStep(calleeClassName: String, ctx: IdxClas
 //    val callerClassDesc = implementationContext.getInstrumentedType.asErasure().getCanonicalName
 //    mv.visitTypeInsn(Opcodes.NEW, calleeClassDesc)
 //    mv.visitInsn(Opcodes.DUP)
-//    for (i <- ctx.indexStack.indices) {
-//      val idx = ctx.indexStack(i)
+//    for (i <- ctx.coordinates.indices) {
+//      val idx = ctx.coordinates(i)
 //      mv.visitVarInsn(Opcodes.ALOAD, 0)
 //      mv.visitFieldInsn(Opcodes.GETFIELD, callerClassDesc.replace(".","/"), s"idx_${idx._1}", "I")
 //      if (stepIdx.contains(idx._1)) {
@@ -543,7 +558,7 @@ private case class MutableRandomAccessStep(calleeClassName: String, ctx: IdxClas
 //        mv.visitInsn(Opcodes.IADD)
 //      }
 //    }
-//    val ctorDescr = s"(${"I"*ctx.indexStack.size})V"
+//    val ctorDescr = s"(${"I"*ctx.coordinates.size})V"
 //    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, calleeClassDesc, "<init>", ctorDescr, false)
 //    mv.visitInsn(Opcodes.ARETURN)
 //    new StackManipulation.Size(1, maxStackSize)
@@ -600,7 +615,7 @@ private case class MutableStep(ctx: IdxClassBackendCtx, stepIdx: String, base: O
 
   override def apply(mv: MethodVisitor, iCtx: Context) = {
     val classDesc = iCtx.getInstrumentedType.asErasure().getCanonicalName.replace(".", "/")
-    mv.visitLdcInsn(s"from MutableStep(ctx={...}, stepIdx=$stepIdx)")
+    mv.visitLdcInsn(s"from MutableStep(ctx={...}, stepIdx=$stepIdx), base=$base")
     mv.visitInsn(Opcodes.POP)
     mv.visitVarInsn(Opcodes.ALOAD, 0)
     mv.visitInsn(Opcodes.DUP)

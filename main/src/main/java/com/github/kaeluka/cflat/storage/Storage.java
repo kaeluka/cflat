@@ -31,14 +31,13 @@ public interface Storage<T> {
     }
 
     public default boolean has(int i) {
-        if (i < 0) {
-            throw new IllegalArgumentException("illegal index: "+i);
-        }
+        IndexCheck.checkIndexIsNonnegative(i);
         return this.get(i) != null;
     }
 
     public default boolean hasInRange(int start, int end) {
-        if (start < 0 || end < start) {
+        IndexCheck.checkIndexIsNonnegative(start);
+        if (end < start) {
             throw new IllegalArgumentException("illegal index range arguments ["+start+", "+end+")");
         }
         for (int i=start; i<end; ++i) {
@@ -57,7 +56,7 @@ public interface Storage<T> {
                 .set(i + 1, y);
     }
 
-    public default Storage<T> computeIfAbsent(int i, Function<Integer, T> f, Mutable<T> result) {
+    public default Storage<T> computeIfAbsent(int i, java.util.function.IntFunction<T> f, Mutable<T> result) {
         result.x = this.get(i);
         if (result.x == null) {
             result.x = f.apply(i);
@@ -69,10 +68,10 @@ public interface Storage<T> {
 
     public Storage<T> clearAll();
 
-    public int sizeOverApproximation();
+    public int maxIdxOverapproximation();
 
 //    public Storage<T> replaceOrSet(T old, int i, T x) {
-//        int idx = find(old, -1);
+//        int idx = findFirst(old, -1);
 //        if (idx < 0) {
 //            return set(i, x);
 //        } else {
@@ -80,8 +79,8 @@ public interface Storage<T> {
 //        }
 //    }
 
-    public default int sizePrecise() {
-        int estimate = sizeOverApproximation();
+    public default int maxIdx() {
+        int estimate = maxIdxOverapproximation();
         assert(estimate >= 0);
 //        assert(!has(estimate));
         while (estimate > 0 && !has(estimate-1)) { estimate --; }
@@ -157,7 +156,7 @@ public interface Storage<T> {
             Storage<T> st = this;
             if (branchingFactor == 1 && (int) shape[2] == 1) {
                 final int diff = source - dest;
-//                st = st.moveRange(source, dest, st.sizeOverApproximation() - source);
+//                st = st.moveRange(source, dest, st.maxIdxOverapproximation() - source);
                 int cur = source;
                 if (dest < source) {
                     T x = get(cur);
@@ -167,7 +166,7 @@ public interface Storage<T> {
                         x = get(cur);
                     }
                 } else {
-//                     find the first null value:
+//                     findFirst the first null value:
                     while (has(cur)) {
                         cur++;
                     }
@@ -183,7 +182,7 @@ public interface Storage<T> {
                     int destRangeStart = dest;
                     int rangeWidth = 1;
 
-                    // 1. find level until which the move must go
+                    // 1. findFirst level until which the move must go
                     boolean continueMoving = true;
                     while (continueMoving) {
                         continueMoving = false;
@@ -326,9 +325,9 @@ public interface Storage<T> {
     }
 
     public default void foreach(IntConsumer f) {
-        final int max = this.sizePrecise();
+        final int max = this.maxIdx();
         if (max < 0) {
-            throw new AssertionError("sizePrecise < 0 (is "+this.sizePrecise()+") for "+this);
+            throw new AssertionError("maxIdx < 0 (is "+this.maxIdx()+") for "+this);
         }
         for (int i=0; i<max; ++i) {
             f.accept(i);
@@ -336,11 +335,11 @@ public interface Storage<T> {
     }
 
     public default void foreachNonNull(IntConsumer f) {
-        final int max = this.sizePrecise();
+        final int max = this.maxIdx();
         if(max < 0) {
-            throw new AssertionError("sizePrecise < 0 (is "+this.sizePrecise()+") for "+this);
+            throw new AssertionError("maxIdx < 0 (is "+this.maxIdx()+") for "+this);
         }
-        for (int i=0; i<=max; ++i) {
+        for (int i=0; i<max; ++i) {
 //            System.out.println(get(i));
             if (has(i)) {
                 f.accept(i);
@@ -352,16 +351,27 @@ public interface Storage<T> {
         final Iterator<Integer> thisIdxs = this.nonNullIndices();
         final Iterator<Integer> otherIdxs = other.nonNullIndices();
         while (thisIdxs.hasNext() && otherIdxs.hasNext()) {
-            final int i = thisIdxs.next();
-            final int j = otherIdxs.next();
-            if (i == j) {
-                f.accept(this.get(i), other.get(j));
+            int i = thisIdxs.next();
+            int j = otherIdxs.next();
+            while (i != j) {
+                if (i < j) {
+                    if (!thisIdxs.hasNext()) { return; }
+                    while (i<j && thisIdxs.hasNext()) {
+                        i = thisIdxs.next();
+                    }
+                } else {
+                    if (!otherIdxs.hasNext()) { return; }
+                    while (j<i && otherIdxs.hasNext()) {
+                        j = otherIdxs.next();
+                    }
+                }
             }
+            f.accept(this.get(i), other.get(j));
         }
     }
 
     public default Iterator<Integer> nonNullIndices() {
-        ArrayList<Integer> list = new ArrayList<>(this.sizeOverApproximation());
+        ArrayList<Integer> list = new ArrayList<>(this.maxIdxOverapproximation());
         foreachNonNull(list::add);
         list.trimToSize();
         return list.iterator();
@@ -373,9 +383,22 @@ public interface Storage<T> {
         return ret.x;
     }
 
-    public default int find(T x, int max) {
-        int _max = max < 0 ? this.sizeOverApproximation() : max;
-        for(int i=0; i<_max; ++i) {
+    public default int findFirst(T x, int max) {
+        int _max = max < 0 ? this.maxIdxOverapproximation() : max;
+        for (int i=0; i<_max; ++i) {
+            if (x.equals(get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public default int findAny(T x) {
+        return findFirst(x, -1);
+    }
+
+    public default int findLast(T x) {
+        for (int i=this.maxIdxOverapproximation(); i>=0; --i) {
             if (x.equals(get(i))) {
                 return i;
             }
@@ -395,7 +418,7 @@ public interface Storage<T> {
 
 //    @Override
 //    public default String toString() {
-//        int end = Math.min(15, this.sizePrecise());
+//        int end = Math.min(15, this.maxIdx());
 //        if (end == 0) {
 //            return "[]";
 //        } else {
@@ -407,5 +430,6 @@ public interface Storage<T> {
 //            return ret.toString();
 //        }
 //    }
+
 }
 

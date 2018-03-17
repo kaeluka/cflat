@@ -22,20 +22,20 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
 public class PMA<T> implements Iterable<T> {
-    private TIntArrayList keys;
-    private ArrayList<T> values;
-    private int segmentSize;
+    protected TIntArrayList keys;
+    protected ArrayList<T> values;
+    protected int segmentSize;
 //    private int nSegments;
-    private int nLevels;
+    protected int nLevels;
 //    private int lgn;
 //    private BitSet present;
-    private static final int EMPTY = Integer.MIN_VALUE;
-    private static double RHO_H = 0.25;
-    private static double RHO_0 = 0.0;
-    private static double TAU_H = 0.5;
-    private static double TAU_0 = 1.0;
+    protected static final int EMPTY = Integer.MIN_VALUE;
+    protected static double RHO_H = 0.25;
+    protected static double RHO_0 = 0.0;
+    protected static double TAU_H = 0.5;
+    protected static double TAU_0 = 1.0;
 
-    private static final boolean DEBUG = false;
+//    protected static final boolean DEBUG = PMA.class.desiredAssertionStatus();
 
     static {
         //see Bender, Hu, p5, (4)
@@ -47,7 +47,7 @@ public class PMA<T> implements Iterable<T> {
         return new PMAIterator();
     }
 
-    private final class PMAIterator implements Iterator<T> {
+    protected final class PMAIterator implements Iterator<T> {
         int nxt = 0;
 
         PMAIterator() {
@@ -87,7 +87,7 @@ public class PMA<T> implements Iterable<T> {
         }
     }
 
-    private final static class MutableInt {
+    protected final static class MutableInt {
         int x;
         MutableInt(int x) { this.x = x; }
 
@@ -97,34 +97,19 @@ public class PMA<T> implements Iterable<T> {
         }
     }
     
-    private boolean isPresent(int idx) {
+    protected boolean isPresent(int idx) {
 //        if (idx >= keys.size()) { return false; }
         return keys.get(idx) != EMPTY;
     }
 
-    private static class Node<V> {
-        final int k;
-        final V v;
+//    protected static void debug(String fmt, Object... args) {
+//        if (PMA.DEBUG) {
+//            System.out.print(String.format(fmt + "\n", args));
+//            System.out.flush();
+//        }
+//    }
 
-        Node(int k, V v) {
-            this.k = k;
-            this.v = v;
-        }
-
-        @Override
-        public String toString() {
-            return k+" -> "+v;
-        }
-    }
-
-    private static void debug(String fmt, Object... args) {
-        if (PMA.DEBUG) {
-            System.out.print(String.format(fmt + "\n", args));
-            System.out.flush();
-        }
-    }
-
-    private static int log2(int bits)
+    protected static int log2(int bits)
     {
         // source: https://stackoverflow.com/questions/3305059/how-do-you-calculate-log-base-2-in-java-for-integers#3305710
         if (bits == 0) {
@@ -150,7 +135,7 @@ public class PMA<T> implements Iterable<T> {
             this.keys.add(EMPTY);
             this.values.add(null);
         }
-        assertRepInvariants();
+//        assertRepInvariants();
 //        this.present = new BitSet(capacity);
     }
 
@@ -160,28 +145,28 @@ public class PMA<T> implements Iterable<T> {
             if (isPresent(i) && (keys.get(i) == EMPTY || values.get(i) == null)) {
                 annotation = " BUG!";
             }
-            if (isPresent(i) || annotation.length() > 0) {
-                debug("%s -> %s%s", keys.get(i) == EMPTY ? "empty" : keys.get(i), values.get(i), annotation);
-            }
+//            if (isPresent(i) || annotation.length() > 0) {
+//                debug("%s -> %s%s", keys.get(i) == EMPTY ? "empty" : keys.get(i), values.get(i), annotation);
+//            }
         }
-        debug("");
+//        debug("");
     }
 
-    private double lowerThreshold(int level) {
+    protected double lowerThreshold(int level) {
         assert level < this.nLevels;
         @SuppressWarnings("UnnecessaryLocalVariable")
         double threshold = RHO_H - ((RHO_H - RHO_0) * level) / (double) nLevels;
         return threshold;
     }
 
-    private double upperThreshold(int level) {
+    protected double upperThreshold(int level) {
         assert level <= this.nLevels;
         @SuppressWarnings("UnnecessaryLocalVariable")
         double threshold = TAU_0 - ((TAU_0 - TAU_H) * level) / (double) nLevels;
         return threshold;
     }
 
-    private boolean intervalStats(int left, int level, MutableInt msz) {
+    protected boolean intervalStats(int left, int level, MutableInt msz) {
         double t = upperThreshold(level);
         int w = getWindowWidth(level);
         int sz = 0;
@@ -194,32 +179,32 @@ public class PMA<T> implements Iterable<T> {
         return (double)(sz+1) / (double) w < t;
     }
 
-    private void assertRepInvariants() {
-        assertLevels();
-        assertSorted();
-        assertLeftBiasedSegments();
-    }
+//    protected void assertRepInvariants() {
+//        assertLevels();
+//        assertSorted();
+//        assertLeftBiasedSegments();
+//    }
 
-    private void assertLevels() {
-        if (DEBUG) {
-            assertThat(keys.size(), is(segmentSize * (1 << nLevels)));
-        }
-    }
+//    private void assertLevels() {
+//        if (DEBUG) {
+//            assertThat(keys.size(), is(segmentSize * (1 << nLevels)));
+//        }
+//    }
 
-    private void assertSorted() {
-        if (DEBUG) {
-            int prev = EMPTY;
-            for (int i = 0; i < keys.size(); i++) {
-                int cur = keys.get(i);
-                if (cur != EMPTY) {
-                    if (!(prev == EMPTY || cur > prev)) {
-                        throw new AssertionError("not sorted at location " + i + "!\n" + neighbourhoodToString(i));
-                    }
-                    prev = cur;
-                }
-            }
-        }
-    }
+//    private void assertSorted() {
+//        if (DEBUG) {
+//            int prev = EMPTY;
+//            for (int i = 0; i < keys.size(); i++) {
+//                int cur = keys.get(i);
+//                if (cur != EMPTY) {
+//                    if (!(prev == EMPTY || cur > prev)) {
+//                        throw new AssertionError("not sorted at location " + i + "!\n" + neighbourhoodToString(i));
+//                    }
+//                    prev = cur;
+//                }
+//            }
+//        }
+//    }
 
     private static String leftPad(String str, int len, char c) {
         StringBuilder strBuilder = new StringBuilder(str);
@@ -233,8 +218,8 @@ public class PMA<T> implements Iterable<T> {
         return leftPad(Integer.toBinaryString(i), 31, '0') + " lz="+Integer.numberOfLeadingZeros(i);
     }
 
-    private static int fastDiv(int a, int b) {
-        assertPowerOfTwo(b);
+    protected static int fastDiv(int a, int b) {
+//        assertPowerOfTwo(b);
 //        System.out.println("a  =" + intToBits(a));
 //        System.out.println("b  =" + intToBits(b));
 //        System.out.println("a/b=" + intToBits(a/b));
@@ -244,44 +229,42 @@ public class PMA<T> implements Iterable<T> {
         return ret;
     }
 
-    private int fastDivBothPow2(int a, int b) {
-        assertPowerOfTwo(a);
-        assertPowerOfTwo(b);
+    protected static int fastDivBothPow2(int a, int b) {
+//        assertPowerOfTwo(a);
+//        assertPowerOfTwo(b);
         int ret = 1 << (Integer.numberOfLeadingZeros(b) - Integer.numberOfLeadingZeros(a));
 //        System.out.println("ret="+intToBits(ret));
 //        assertThat(ret, is(a/b));
         return ret;
     }
 
-    private void assertLeftBiasedSegments() {
-        if (DEBUG) {
-            final int NSEGMENTS = fastDivBothPow2(keys.size(), segmentSize);
-            assert NSEGMENTS == keys.size() / segmentSize;
-//        debug("segmentSize=%d", segmentSize);
-            for (int seg = 0; seg < NSEGMENTS; seg++) {
-                int i = seg * segmentSize;
+//    private void assertLeftBiasedSegments() {
+//        if (DEBUG) {
+//            final int NSEGMENTS = fastDivBothPow2(keys.size(), segmentSize);
+//            assert NSEGMENTS == keys.size() / segmentSize;
+//            for (int seg = 0; seg < NSEGMENTS; seg++) {
+//                int i = seg * segmentSize;
+//
+//                boolean hadEmpty = false;
+//                for (int cur = seg * segmentSize; cur < (seg + 1) * segmentSize; ++cur) {
+//                    if (hadEmpty && keys.get(cur) != EMPTY) {
+//                        String msg = String.format("invalid segment %d: %s", i, neighbourhoodToString(i));
+//                        throw new AssertionError(msg);
+//
+//                    } else {
+//                        if (keys.get(cur) == EMPTY) {
+//                            hadEmpty = true;
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
 
-                boolean hadEmpty = false;
-                for (int cur = seg * segmentSize; cur < (seg + 1) * segmentSize; ++cur) {
-                    if (hadEmpty && keys.get(cur) != EMPTY) {
-                        String msg = String.format("invalid segment %d: %s", i, neighbourhoodToString(i));
-                        throw new AssertionError(msg);
-
-                    } else {
-                        if (keys.get(cur) == EMPTY) {
-                            hadEmpty = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private void mergeInto(int segmentStart, int key, T val) {
+    protected void mergeInto(int segmentStart, int key, T val) {
         int insertTo = segmentStart;
         for (int i = segmentStart; i < segmentStart+segmentSize; i++) {
             final int curKey = keys.get(i);
-            debug("comparing at %d: %d >= %d?", i, curKey, key);
             if (curKey >= key || curKey == EMPTY) {
                 insertTo = i;
                 break;
@@ -302,17 +285,17 @@ public class PMA<T> implements Iterable<T> {
 
         keys  .set(insertTo, key);
         values.set(insertTo, val);
-        assertRepInvariants();
+//        assertRepInvariants();
     }
 
-    private void printNeighbourhood(final int idx) {
-        if (PMA.DEBUG) {
-            String n = neighbourhoodToString(idx);
-            System.out.println(n);
-        }
-    }
+//    protected void printNeighbourhood(final int idx) {
+//        if (PMA.DEBUG) {
+//            String n = neighbourhoodToString(idx);
+//            System.out.println(n);
+//        }
+//    }
 
-    private String neighbourhoodToString(final int idx) {
+    protected String neighbourhoodToString(final int idx) {
         final int start = Math.max(0, idx - segmentSize);
         final int end = Math.min(keys.size()-1, idx+segmentSize);
         StringBuilder ret = new StringBuilder();
@@ -337,10 +320,10 @@ public class PMA<T> implements Iterable<T> {
         return ret.toString();
     }
 
-    private void grow() {
-        assertRepInvariants();
+    protected void grow() {
+//        assertRepInvariants();
         int capacity = 2 * values.size();
-        assertPowerOfTwo(capacity);
+//        assertPowerOfTwo(capacity);
         initialise(capacity);
         final TIntArrayList newKeys = new TIntArrayList(capacity, EMPTY);
         final ArrayList<T> newValues = new ArrayList<>(capacity);
@@ -362,11 +345,11 @@ public class PMA<T> implements Iterable<T> {
 
         keys = newKeys;
         values = newValues;
-        assertRepInvariants();
+//        assertRepInvariants();
     }
 
-    private void rebalanceWindow(int windowStart, int level) {
-        debug("rebalanceWindow(%d, %d)", windowStart, level);
+    protected void rebalanceWindow(int windowStart, int level) {
+//        debug("rebalanceWindow(%d, %d)", windowStart, level);
         int wWidth = getWindowWidth(level);
 
         TIntArrayList tmpKeys = new TIntArrayList(wWidth, EMPTY);
@@ -416,21 +399,24 @@ public class PMA<T> implements Iterable<T> {
 //            windows *= 2;
 //            curWindowWidth /= 2;
 //        }
-        assertRepInvariants();
+//        assertRepInvariants();
     }
 
-    private int getWindowWidth(final int level) {
+    protected int getWindowWidth(final int level) {
         return (1 << level) * segmentSize;
     }
 
     public void put(final int key, T x) {
-        debug("put(%d, %s)", key, x);
+//        debug("put(%d, %s)", key, x);
+
 
         int idx = find(key);
         if (idx >= 0 && keys.get(idx) == key) {
             values.set(idx, x);
             return;
         }
+        if (idx >= 0 && x == null && values.get(idx) == null) { return; }
+
         int curWindowStart = Math.max(0, segmentStart(idx));
         if (curWindowStart == keys.size()) {
             curWindowStart = 0;
@@ -473,12 +459,12 @@ public class PMA<T> implements Iterable<T> {
                 final MutableInt rsz = new MutableInt(sz);
                 in_limit = intervalStats(curWindowStart, level, rsz);
                 sz = rsz.x;
-                debug("level: %d, this.nLevels: %d, in_limit: %b, sz: %d", level, this.nLevels, in_limit, sz);
+//                debug("level: %d, this.nLevels: %d, in_limit: %b, sz: %d", level, this.nLevels, in_limit, sz);
             }
             this.rebalanceWindow(curWindowStart, level);
             this.put(key, x);
         }
-        assertRepInvariants();
+//        assertRepInvariants();
     }
 
     /** Find the index {@code key}, or the first value larger than {@code key}
@@ -488,7 +474,7 @@ public class PMA<T> implements Iterable<T> {
      * @return the index of key in the keys array, -1 if there are no keys,
      * or {@code }keys.size()} if all keys are smaller than {@code key}.
      */
-    private int find(final int key) {
+    protected int find(final int key) {
         int l = 0, r = keys.size()-1;
         int m;
         int segL = 0;
@@ -537,16 +523,16 @@ public class PMA<T> implements Iterable<T> {
         return -1;
     }
 
-    private int findSegmentStart(final int key) {
+    protected int findSegmentStart(final int key) {
         return Math.max(0, segmentStart(find(key)));
     }
 
-    private int segmentStart(final int idx) {
+    protected int segmentStart(final int idx) {
         //FIXME: avoid integer division
         return fastDiv(idx, segmentSize) * segmentSize;
     }
 
-    private int windowStart(final int idx, int level) {
+    protected int windowStart(final int idx, int level) {
         //FIXME: avoid integer division
         final int windowWidth = segmentSize * (1 << level);
         return fastDiv(idx, windowWidth) * windowWidth;
@@ -561,6 +547,7 @@ public class PMA<T> implements Iterable<T> {
      * +1 if the key must be right of this segment,
      * EMPTY, if the sgement contains no data.
      */
+    /*
     private int cmpSegment(int idx, int key) {
         boolean empty = true;
         int mi = Integer.MAX_VALUE;
@@ -586,6 +573,7 @@ public class PMA<T> implements Iterable<T> {
             }
         }
     }
+    */
 
     private int findInSegment(int idx, int key) {
         for (int i=idx; i < idx+segmentSize; i++) {
@@ -647,14 +635,14 @@ public class PMA<T> implements Iterable<T> {
         nLevels = log2(nSegments);
 //        debug("initialised: segmentSize: %d, nSegments: %d, nLevels: %d",
 //                                 segmentSize,     nSegments,     nLevels);
-        assertPowerOfTwo(segmentSize);
+//        assertPowerOfTwo(segmentSize);
     }
 
-    private static void assertPowerOfTwo(int i) {
-        if (DEBUG) {
-            assert i == 1 << log2(i);
-        }
-    }
+//    protected static void assertPowerOfTwo(int i) {
+//        if (DEBUG) {
+//            assert i == 1 << log2(i);
+//        }
+//    }
 
     public T get(final int key) {
         final int i = find(key);
@@ -674,6 +662,6 @@ public class PMA<T> implements Iterable<T> {
             values.add(null);
         }
 
-        assertRepInvariants();
+//        assertRepInvariants();
     }
 }

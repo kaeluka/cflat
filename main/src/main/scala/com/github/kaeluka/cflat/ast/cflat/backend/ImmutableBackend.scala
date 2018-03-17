@@ -36,10 +36,10 @@
 //        }
 //        //        println(s"stage $name: 1")
 //        val cPrime = c
-//          .pushIndex(loopName, Option(n), name)
+//          .pushStride(loopName, Option(n), name)
 //          .mapResToExtend(_
 //            .withIndexField(loopName)
-//            .withStepConstructor((loopName, Some(idxFieldLimit), name) :: c.indexStack))
+//            .withStepConstructor((loopName, Some(idxFieldLimit), name) :: c.coordinates))
 //
 //        val ethrCtxWithLoop = oLoop match {
 //          /**
@@ -59,8 +59,8 @@
 //          case Some(after) => {
 //            val emptyRes = BytecodeResult
 //              .empty(cPrime.packge, exitName.toUpperCase)
-//              .withIndexFields(cPrime.indexStack)
-//              .withStepConstructor(cPrime.indexStack)
+//              .withIndexFields(cPrime.coordinates)
+//              .withStepConstructor(cPrime.coordinates)
 //            //            println(s"stage $name: 2")
 //            for (cPrimePrime <- ethrCtxWithLoop.right;
 //                 afterComp <- compile(
@@ -135,34 +135,34 @@
 //    Right(withCtor)
 //  }
 //
-//  def addAllStepConstructors(toModify : (String, DynamicType.Builder[Object]), indexStack : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
+//  def addAllStepConstructors(toModify : (String, DynamicType.Builder[Object]), coordinates : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
 //    var acc = toModify
-//    for (i <- indexStack.indices) {
-//      acc = (acc._1, addStepConstructor(acc, indexStack.drop(i)))
+//    for (i <- coordinates.indices) {
+//      acc = (acc._1, addStepConstructor(acc, coordinates.drop(i)))
 //    }
 //    acc._2
 //  }
 //
-//  def addStepConstructor(toModify : (String, DynamicType.Builder[Object]), indexStack : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
-//    //    println(s"adding ctor for ${toModify._1}, ${indexStack.size} args")
+//  def addStepConstructor(toModify : (String, DynamicType.Builder[Object]), coordinates : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
+//    //    println(s"adding ctor for ${toModify._1}, ${coordinates.size} args")
 //    val ctorImpl = ToImpl(new StackManipulation {
 //      override def apply(mv: MethodVisitor, implCtx: Context) = {
 //        //        mv.visitLdcInsn("from addStepConstructor")
 //        //        mv.visitInsn(Opcodes.POP)
 //        mv.visitVarInsn(Opcodes.ALOAD, 0)
 //        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
-//        for (idx <- indexStack.zipWithIndex) {
+//        for (idx <- coordinates.zipWithIndex) {
 //          mv.visitVarInsn(Opcodes.ALOAD, 0)
 //          mv.visitVarInsn(Opcodes.ILOAD, idx._2+1)
 //          mv.visitFieldInsn(Opcodes.PUTFIELD, toModify._1, "idx_"+idx._1._1, "I")
 //        }
 //        mv.visitInsn(Opcodes.RETURN)
-//        new StackManipulation.Size(0, if (indexStack.nonEmpty) { 2 } else { 1 })
+//        new StackManipulation.Size(0, if (coordinates.nonEmpty) { 2 } else { 1 })
 //      }
 //      override def isValid = true
 //    })
 //    val parameters = new java.util.ArrayList[TypeDefinition]()
-//    for (idx <- indexStack) {
+//    for (idx <- coordinates) {
 //      parameters.add(new TypeDescription.ForLoadedType(classOf[Int]))
 //    }
 //    toModify._2.defineConstructor(Opcodes.ACC_PUBLIC)
@@ -203,13 +203,13 @@
 //    toModify.defineField(s"idx_${index._1}", classOf[Int], Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL)
 //  }
 //
-//  def addIndexFields(toModify : DynamicType.Builder[Object], indexStack : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
-//    //    println(s"adding coordinate fields ${indexStack.mkString("[", ", ", "]")}")
-//    indexStack.foldRight(toModify)({case (f, acc) => addIndexField(acc, f)})
+//  def addIndexFields(toModify : DynamicType.Builder[Object], coordinates : List[(String, Option[Int], String)]) : DynamicType.Builder[Object] = {
+//    //    println(s"adding coordinate fields ${coordinates.mkString("[", ", ", "]")}")
+//    coordinates.foldRight(toModify)({case (f, acc) => addIndexField(acc, f)})
 //  }
 //
 //  def addRecursionMethods(toModify : (String, DynamicType.Builder[Object]))(implicit ctx : IdxClassBackendCtx) : (String, DynamicType.Builder[Object]) = {
-//    ctx.indexStack.foldRight(toModify)({case ((name, osz, kl), acc) => {
+//    ctx.coordinates.foldRight(toModify)({case ((name, osz, kl), acc) => {
 //      println(s"==> public $kl ${toModify._1}::rec_$name() | recursion method")
 //      (acc._1, acc._2
 //        .defineMethod(s"rec_$name", BytecodeBackendUtil.getTypeDesc(ctx.packge, kl), Opcodes.ACC_PUBLIC)

@@ -18,7 +18,7 @@ public final class EmptyStorage<T> implements Storage<T> {
     }
 
     @Override
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return 0;
     }
 

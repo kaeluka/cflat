@@ -10,7 +10,7 @@
 //
 //public final class MapStorage<T> implements Storage<T> {
 //    private final Map<Integer, T> map;
-//    private int maxIdx = -1;
+//    private int maxIdxOverapproximation = -1;
 //
 //    @Override
 //    public T get(final int i) {
@@ -28,7 +28,7 @@
 //    @Override
 //    public Storage<T> set(final int i, final T x) {
 //        if (x != null) {
-//            maxIdx = i > maxIdx ? i : maxIdx;
+//            maxIdxOverapproximation = i > maxIdxOverapproximation ? i : maxIdxOverapproximation;
 //            this.map.put(i, x);
 //        } else {
 //            this.map.remove(i);
@@ -37,7 +37,7 @@
 //    }
 //
 //    @Override
-//    public int find(final T x, final int max) {
+//    public int findFirst(final T x, final int max) {
 ////         FIXME
 //        final Set<Map.Entry<Integer, T>> entries = this.map.entrySet();
 //        for (Map.Entry<Integer, T> e : entries) {
@@ -51,7 +51,7 @@
 //    @Override
 //    public Storage<T> computeIfAbsent(final int i, final Function<Integer, T> f, final Mutable<T> result) {
 //        result.x = this.map.computeIfAbsent(i, f);
-//        if (i > maxIdx) { maxIdx = i; }
+//        if (i > maxIdxOverapproximation) { maxIdxOverapproximation = i; }
 //        return this;
 //    }
 //
@@ -72,8 +72,8 @@
 //    }
 //
 //    @Override
-//    public int sizeOverApproximation() {
-//        return maxIdx+1;
+//    public int maxIdxOverapproximation() {
+//        return maxIdxOverapproximation+1;
 //    }
 //
 //    @Override

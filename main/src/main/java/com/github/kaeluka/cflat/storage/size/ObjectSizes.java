@@ -1,16 +1,22 @@
 package com.github.kaeluka.cflat.storage.size;
 
+import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.map.hash.TIntObjectHashMap;
+import io.usethesource.capsule.Map;
+import io.usethesource.capsule.core.PersistentTrieMap;
 
 import java.lang.reflect.Field;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.LinkedList;
 import java.util.TreeMap;
 
+@SuppressWarnings({"WeakerAccess", "unused"})
 public  class ObjectSizes {
     public final static long OBJ_HEADER = 4;
     public final static long CHAR       = 1;
+    public final static long BYTE       = 1;
     public final static long BOOLEAN    = 1;
     public final static long INT        = 4;
     public final static long FLOAT      = 4;
@@ -35,8 +41,23 @@ public  class ObjectSizes {
     private static long ARRAY_SIZE(long COMPONENT_SIZE, int N) {
         return REFERENCE + INT + N*COMPONENT_SIZE;
     }
+
+    public static long IMMUTABLE_MAP_SIZE(Map.Immutable<?,?> map) {
+        assert (map instanceof PersistentTrieMap);
+//        return OBJ_HEADER
+//                +REFERENCE    // root node
+//                +INT          // cached hash code
+//                +INT          // cached stepSize
+//                +
+        return -1;
+        //                ^rootNode ^cached hash
+    }
+
     public static long ARRAY_SIZE(char[] a) {
         return ARRAY_SIZE(CHAR, a.length);
+    }
+    public static long ARRAY_SIZE(byte[] a) {
+        return ARRAY_SIZE(BYTE, a.length);
     }
     public static long ARRAY_SIZE(boolean[] a) {
         return ARRAY_SIZE(BOOLEAN, a.length);
@@ -90,7 +111,23 @@ public  class ObjectSizes {
         }
     }
 
-    public static long ARRAYLIST_SIZE(final ArrayList<Object> alist) {
+    public static long LINKEDLIST_SIZE(LinkedList<?> t) {
+        return OBJ_HEADER+REFERENCE   +REFERENCE + t.size()*(OBJ_HEADER+REFERENCE*3);
+        //     ^list      ^list.first  ^list.last  ^ nodes  (^prev, next, element)
+    }
+
+    public static long ARRAYLIST_SIZE(TIntArrayList t) {
+        try {
+            final Field elementDataF = TIntArrayList.class.getDeclaredField("_data");
+            elementDataF.setAccessible(true);
+            return ARRAY_SIZE((int[])elementDataF.get(t));
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            e.printStackTrace();
+            return -1;
+        }
+    }
+
+    public static long ARRAYLIST_SIZE(final ArrayList<?> alist) {
         try {
             final Field elementDataF = ArrayList.class.getDeclaredField("elementData");
             elementDataF.setAccessible(true);

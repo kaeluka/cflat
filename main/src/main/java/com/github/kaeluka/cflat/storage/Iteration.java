@@ -3,14 +3,12 @@ package com.github.kaeluka.cflat.storage;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.function.IntConsumer;
-import java.util.function.LongConsumer;
 import java.util.stream.IntStream;
-import java.util.stream.LongStream;
 
 public interface Iteration extends Spliterators.AbstractSpliterator.OfInt {
     public static <T> Spliterator.OfInt any(final int  start, final Object[] shape, Storage<T> s) {
         if (start == 0) {
-            return IntStream.range(0, s.sizeOverApproximation()).spliterator();
+            return IntStream.range(0, s.maxIdxOverapproximation()).spliterator();
         } else {
             return new TreeIndexSpliterator(start, 2 /*FIXME*/);
         }
@@ -86,7 +84,7 @@ class TreeIndexSpliterator implements Iteration {
 
     @Override
     public String toString() {
-        return this.getClass().getSimpleName()+"(start="+layerStart+", size="+layerSize+", branching="+branchingFactor+")";
+        return this.getClass().getSimpleName()+"(start="+layerStart+", stepSize="+layerSize+", branching="+branchingFactor+")";
     }
 }
 

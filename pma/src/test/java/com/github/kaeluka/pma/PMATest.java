@@ -30,7 +30,7 @@ public class PMATest {
     @Test
     public void testRandomMapInserts() {
         Hashtable<Integer, String> t = new Hashtable<>(16);
-        final int N = 1000000;
+        final int N = 10000;
         Random random = new Random(12345L);
         String[] vals = new String[N];
 
@@ -54,7 +54,7 @@ public class PMATest {
     @Test
     public void testRandomInserts() {
         PMA<String> p1 = new PMA<>(16);
-        final int N = 1000000;
+        final int N = 10000;
         Random random = new Random(12345L);
         String[] vals = new String[N];
 
@@ -79,7 +79,7 @@ public class PMATest {
     @Test
     public void testConsecutiveInserts() {
         PMA<Integer> p1 = new PMA<>(16);
-        final int N = 1000000;
+        final int N = 10000;
 
         for (int i = 0; i < N; i++) {
             if (i % ((N-1)/100) == 0) {

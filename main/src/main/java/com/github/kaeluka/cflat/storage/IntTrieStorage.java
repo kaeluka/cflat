@@ -156,7 +156,7 @@ public class IntTrieStorage implements Storage<Integer> {
         return this;
     }
 
-    public int sizeOverApproximation() {
+    public int maxIdxOverapproximation() {
         return maxIdx+1;
     }
 
